@@ -9,6 +9,7 @@ from typing import Optional, Callable
 from dataclasses import dataclass, field
 
 from config import (BuildConfig, KSU_REPO_CONFIG, SUSFS_REPO_CONFIG, SUKISU_PATCH_REPO_CONFIG,
+                   DEFAULT_KSU_REF, SUSFS_UPSTREAM_URL, SUSFS_BRANCH_REPOS,
                    ANYKERNEL_CONFIG, KERNEL_PATCHES_CONFIG, BBG_CONFIG, TOOLCHAIN_CONFIG,
                    LEGACY_FIXES, OP8E_PATCH_URL, KPM_PATCH_URL)
 
@@ -332,7 +333,7 @@ CONFIG_CIFS_XATTR=y
             # (mode is fixed upstream there, see kernel_builder.py's
             # build_kernel()), so record that explicitly rather than
             # showing a mode that wasn't actually honored.
-            "lto_mode": self.config.lto_mode if is_legacy else "n/a (bazel)",
+            "lto_mode": self._reported_lto_mode(is_legacy),
             "peak_mem_gb": round(self._peak_mem_used_mb / 1024, 1) if self._peak_mem_used_mb else None,
             "patches": self.patch_status,
         }
@@ -477,6 +478,19 @@ CONFIG_CIFS_XATTR=y
         finally:
             self._chdir(Path(prev_cwd))
 
+    def _susfs_remote_for_branch(self) -> str:
+        """Which susfs4ksu remote actually carries this build's branch.
+
+        SUSFS_BRANCH_REPOS overrides per kernel branch; everything else
+        uses the configured default fork. See config.py for why this
+        exists (ShirkNeko's GitHub fork stops at gki-android15-6.6)."""
+        url = SUSFS_BRANCH_REPOS.get(
+            self.config.kernel_branch, SUSFS_REPO_CONFIG["repo_url"]
+        )
+        if url != SUSFS_REPO_CONFIG["repo_url"]:
+            logger.info(f"SUSFS for {self.config.kernel_branch} resolved to {url}")
+        return url
+
     def _verify_susfs_branch_layout(self):
         """Confirms the susfs4ksu checkout actually carries the SUSFS
         patch this build needs, before the (multi-minute) kernel source
@@ -509,8 +523,26 @@ CONFIG_CIFS_XATTR=y
 
     def clone_repositories(self):
         logger.info("=== Cloning repositories ===")
+
+        def _clone_susfs_with_fallback(url, branch, exit_code):
+            """ShirkNeko's fork only carries branches up to
+            gki-android15-6.6. Rather than dying outright when a newer
+            branch is missing, retry against upstream (GitLab), which is
+            what WildKernels track and where gki-android16-6.12 lives.
+            Commit hashes are shared between the two for branches both
+            carry, so an existing --susfs-commit pin stays valid."""
+            if url == SUSFS_UPSTREAM_URL:
+                return None
+            logger.warning(
+                f"SUSFS branch '{branch}' not available on {url} "
+                f"(exit {exit_code}) - retrying against upstream "
+                f"{SUSFS_UPSTREAM_URL}"
+            )
+            cmd = f"git clone {SUSFS_UPSTREAM_URL} {self.susfs_dir.name} -b {branch}"
+            return self._run_cmd(cmd, check=False)
+
         for name, repo_dir, url, branch in [
-            ("SUSFS", self.susfs_dir, SUSFS_REPO_CONFIG['repo_url'], self.config.kernel_branch),
+            ("SUSFS", self.susfs_dir, self._susfs_remote_for_branch(), self.config.kernel_branch),
             ("SukiSU Patch", self.sukisu_patch_dir, SUKISU_PATCH_REPO_CONFIG['repo_url'], None),
             ("AnyKernel3", self.anykernel_dir, ANYKERNEL_CONFIG['repo_url'], ANYKERNEL_CONFIG['branch']),
             ("Kernel Patches", self.kernel_patches_dir, KERNEL_PATCHES_CONFIG['repo_url'], None),
@@ -521,6 +553,11 @@ CONFIG_CIFS_XATTR=y
                     cmd += f" -b {branch}"
                 logger.info(f"Cloning {name}...")
                 result = self._run_cmd(cmd, check=False)
+                if name == "SUSFS" and result.returncode != 0:
+                    retry = _clone_susfs_with_fallback(url, branch, result.returncode)
+                    if retry is not None and retry.returncode == 0:
+                        logger.info(f"SUSFS branch '{branch}' cloned from upstream instead")
+                        result = retry
                 if name == "SUSFS" and result.returncode != 0:
                     raise RuntimeError(
                         f"Failed to clone SUSFS branch '{branch}' from {url} "
@@ -977,7 +1014,12 @@ CONFIG_CIFS_XATTR=y
         self._chdir(self.work_dir)
         setup_url = (f"https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/{self.config.kernelsu_commit}/kernel/setup.sh"
                     if self.config.kernelsu_commit else KSU_REPO_CONFIG["setup_script"])
-        result = self._run_cmd(f"curl -LSsf {setup_url} | bash -s builtin", check=False)
+        # setup.sh's argument is <commit-or-tag>, NOT a mode. See
+        # DEFAULT_KSU_REF in config.py for the full story on why passing
+        # "builtin" here silently built SukiSU-Ultra's divergent `builtin`
+        # branch and broke SUSFS patching.
+        ksu_ref = self.config.kernelsu_commit or DEFAULT_KSU_REF
+        result = self._run_cmd(f"curl -LSsf {setup_url} | bash -s {ksu_ref}", check=False)
         if self.config.kernelsu_commit and result.returncode != 0:
             raise RuntimeError(
                 f"kernelsu_commit '{self.config.kernelsu_commit}' could not be "
@@ -986,25 +1028,115 @@ CONFIG_CIFS_XATTR=y
                 f"Refusing to silently fall back to the default setup script. "
                 f"Check available tags at https://github.com/SukiSU-Ultra/SukiSU-Ultra/tags"
             )
-        if self.config.kernelsu_commit:
-            ksu_dir = self.work_dir / "KernelSU"
-            if not ksu_dir.exists():
-                raise RuntimeError(
-                    f"kernelsu_commit '{self.config.kernelsu_commit}' was set, but "
-                    f"the setup script didn't produce a KernelSU/ directory to pin "
-                    f"- can't verify the checkout landed on the right ref."
-                )
-            self._chdir(ksu_dir)
-            checkout_result = self._run_cmd(f"git checkout {self.config.kernelsu_commit}", check=False)
+        # Verify unconditionally - not just when --ksu-commit was passed.
+        # setup.sh swallows a failed checkout (`git checkout "$1" && echo ...
+        # || echo "[-] Checkout default branch"`), so a bad ref leaves the
+        # tree on whatever branch the clone happened to land on and the
+        # script still exits 0. That is exactly how the `builtin` breakage
+        # went unnoticed: the build reported success while tracking a
+        # branch nobody asked for.
+        ksu_dir = self.work_dir / "KernelSU"
+        if not ksu_dir.exists():
+            raise RuntimeError(
+                f"setup.sh didn't produce a KernelSU/ directory - can't verify "
+                f"which SukiSU-Ultra ref we're building. Refusing to continue."
+            )
+        self._chdir(ksu_dir)
+        checkout_result = self._run_cmd(f"git checkout {ksu_ref}", check=False)
+        if checkout_result.returncode != 0:
             self._chdir(self.work_dir)
-            if checkout_result.returncode != 0:
-                raise RuntimeError(
-                    f"kernelsu_commit '{self.config.kernelsu_commit}' was fetched "
-                    f"via setup.sh but 'git checkout {self.config.kernelsu_commit}' "
-                    f"failed inside KernelSU/ - the ref may not be reachable from "
-                    f"the clone setup.sh made. Refusing to silently continue on "
-                    f"whatever ref setup.sh left it on."
-                )
+            raise RuntimeError(
+                f"SukiSU-Ultra ref '{ksu_ref}' was fetched via setup.sh but "
+                f"'git checkout {ksu_ref}' failed inside KernelSU/ - the ref may "
+                f"not exist or not be reachable from the clone setup.sh made. "
+                f"Refusing to silently continue on whatever ref setup.sh left it "
+                f"on. Available tags: "
+                f"https://github.com/SukiSU-Ultra/SukiSU-Ultra/tags"
+            )
+        # capture_output=True is required here: ShellCommand.run() defaults
+        # to False, which streams straight to the console and leaves
+        # .stdout as None - the command runs and prints fine, but we get
+        # nothing back to log or record.
+        landed = self._run_cmd("git rev-parse HEAD", check=False, capture_output=True)
+        described = self._run_cmd("git describe --tags --always", check=False, capture_output=True)
+        self._chdir(self.work_dir)
+        logger.info(
+            f"SukiSU-Ultra pinned to {ksu_ref} -> "
+            f"{(described.stdout or '').strip()} "
+            f"({(landed.stdout or '').strip()[:12]})"
+        )
+        self._mark("sukisu_ref", "applied",
+                   f"{ksu_ref} -> {(described.stdout or '').strip()}")
+
+    # SukiSU's Kbuild derives the number it reports like this:
+    #
+    #   GITHUB_COMMITS := $(shell curl -sI ".../commits?sha=main..." | ... rel="last")
+    #   LOCAL_COUNT    := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
+    #   KSU_VERSION    := 40000 + $(LOCAL_COUNT) - 2815
+    #
+    # Note what that means: the number does NOT come from the source being
+    # compiled. It is main's live commit count at the moment of the build,
+    # fetched over the network. The same tag therefore produces a different
+    # number every day - v4.2.0 built on 2026-09-01 reported 40901, the same
+    # tag built on 2026-09-13 reported 40922.
+    #
+    # That matters because the released manager for a tag checks for EXACT
+    # equality (manager v4.2.0, HomeUiState.kt):
+    #
+    #   showVersionMismatchWarning = ksuVersion.toLong() != currentManagerVersionCode
+    #
+    # so a kernel built today from v4.2.0 no longer pairs with the manager
+    # released from v4.2.0. Pinning the source was not enough; the number
+    # has to be pinned too, or the build is not reproducible in the only
+    # sense that matters to the device.
+    VERSION_BASE = 40000
+    VERSION_OFFSET = 2815
+
+    def _pin_ksu_version_code(self):
+        """Makes SukiSU report a fixed version number instead of curling for it."""
+        wanted = self.config.ksu_version_code
+        if not wanted:
+            self._mark("ksu_version_code", "skipped", "not requested (live GitHub count)")
+            return
+
+        local_count = wanted - self.VERSION_BASE + self.VERSION_OFFSET
+        if local_count <= 0:
+            raise RuntimeError(
+                f"--ksu-version-code {wanted} is below SukiSU's VERSION_BASE "
+                f"({self.VERSION_BASE}); that cannot correspond to any commit count."
+            )
+
+        candidates = [
+            self.work_dir / "KernelSU/kernel/Kbuild",
+            self.work_dir / "KernelSU/kernel/Makefile",
+        ]
+        target = next((c for c in candidates if c.exists()), None)
+        if target is None:
+            raise RuntimeError(
+                "--ksu-version-code was set but neither KernelSU/kernel/Kbuild "
+                "nor KernelSU/kernel/Makefile exists - cannot pin the version."
+            )
+
+        text = target.read_text()
+        pattern = re.compile(
+            r"^(LOCAL_COUNT\s*:=).*$", re.MULTILINE)
+        if not pattern.search(text):
+            raise RuntimeError(
+                f"Could not find the LOCAL_COUNT assignment in {target}. "
+                f"SukiSU's version machinery has changed shape - refusing to "
+                f"guess, because a wrong edit here produces a kernel that "
+                f"silently misreports its own version."
+            )
+        text = pattern.sub(rf"\1 {local_count}", text, count=1)
+        target.write_text(text)
+
+        logger.info(
+            f"Pinned SukiSU version code to {wanted} "
+            f"(LOCAL_COUNT={local_count}) in {target.name} - the build will no "
+            f"longer curl GitHub for main's live commit count."
+        )
+        self._mark("ksu_version_code", "applied",
+                   f"{wanted} (LOCAL_COUNT={local_count})")
 
     # Upstream Linux changed ptrace_notify()'s signature in 5.16 to pass
     # the event message as an explicit argument instead of stashing it in
@@ -1014,6 +1146,50 @@ CONFIG_CIFS_XATTR=y
     # Kernels below 5.16 (5.10, 5.15) don't have this fix upstream, so we
     # backport it here. This is a no-op skip - not a failure - on kernels
     # that already have it natively.
+    def _fix_bbg_genheaders_path(self, common_dir: Path):
+        """Deliberately does nothing. Kept so the reason is not re-discovered.
+
+        security/baseband-guard/Makefile tries to pre-generate
+        $(objtree)/security/selinux/flask.h and av_permissions.h by
+        building scripts/selinux/genheaders with $(HOSTCC) at parse
+        time. Under build/build.sh the PATH is narrowed, the host clang
+        cannot find `ld`, and the whole thing fails noisily:
+
+            clang-14: error: unable to execute command:
+                      Executable "ld" doesn't exist!
+            make[3]: ./genheaders: No such file or directory
+            mv: bad './flask.h': No such file or directory
+
+        That noise is HARMLESS and must stay. security/selinux/Makefile
+        generates both headers itself, as a normal build rule, well
+        before any BBG object compiles - so the kernel's own authoritative
+        copies are what everything is built against.
+
+        This method used to "fix" the failure by wrapping the HOSTCC call
+        in a PATH-extended env (mirroring what BBG already does for git).
+        It worked - and that was the problem. BBG's copies then won the
+        race and landed in objtree first. flask.h and av_permissions.h
+        define the numeric SELinux class and permission IDs; a copy
+        produced by a different invocation is not guaranteed to match
+        what the rest of the kernel is compiled against.
+
+        Measured, on identical kernel source (013ca9e4), identical
+        SukiSU-Ultra (v4.2.0) and an identical SUSFS pin: the build
+        WITHOUT this fix booted on a real device; the build WITH it did
+        not. It was the only change between them that alters compiled
+        output - the other two deltas in that build were a no-op on 5.15
+        (the selinux_hide guards sit inside
+        `#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)`) and a
+        read-only verification step.
+
+        Do not re-enable this. If the log noise ever needs to go, the
+        safe direction is to stop BBG from generating at all (so the
+        kernel's rule remains the only producer), never to make BBG's
+        generation succeed.
+        """
+        self._mark("bbg_genheaders_path", "skipped",
+                   "intentionally not patched - kernel's own flask.h must win")
+
     def apply_ptrace_leak_fix(self):
         if self.config.kernel_version not in ("5.10", "5.15"):
             logger.info("Skipping ptrace leak fix - already upstream on this kernel version")
@@ -1209,6 +1385,7 @@ CONFIG_CIFS_XATTR=y
             return
         self._chdir(common_dir)
         self._run_cmd(f"wget -O- {BBG_CONFIG['setup_script']} | bash", check=False)
+        self._fix_bbg_genheaders_path(common_dir)
         config_file = common_dir / "arch/arm64/configs/gki_defconfig"
         if config_file.exists():
             with open(config_file, "a") as f:
@@ -1364,7 +1541,19 @@ CONFIG_CIFS_XATTR=y
         # location for the full mechanism). Don't re-add a non-reserved-
         # slot struct modification here.
         sysvipc_variants = [
-            "droidspaces_sysvipc_kabi_slots678.patch",  # upstream's default choice for every below-6.12 branch - tried first
+            # Branch-specific exact-context variants come first. These exist
+            # because the generic patches' TRAILING context assumes the
+            # "New fields for task_struct should be added above here"
+            # comment sits immediately after ANDROID_KABI_RESERVE(8). On
+            # android15-6.6 a CONFIG_RV block sits there instead, so the
+            # generic slots678 hunk only matched at fuzz 2 - and fuzz is
+            # exactly what we refuse to use here (see below). The
+            # regenerated variant performs the identical transformation
+            # (slots 6/7/8, slot 1 left alone) and was verified to produce
+            # a byte-identical result to the fuzz-2 apply, but matches at
+            # -F 0. Non-matching branches skip it harmlessly.
+            f"droidspaces_sysvipc_kabi_slots678_{self.config.android_version}-{self.config.kernel_version}.patch",
+            "droidspaces_sysvipc_kabi_slots678.patch",  # upstream's default choice for every below-6.12 branch
             "droidspaces_sysvipc_kabi_slots345.patch",
             "droidspaces_sysvipc_kabi_slots123.patch",
         ]
@@ -1813,6 +2002,86 @@ CONFIG_CIFS_XATTR=y
                 f"check the build log above for rejected hunks."
             )
         self._mark("susfs", "applied")
+
+    _SELINUX_HIDE_GUARD_FIXES = [
+        (
+            "    if (security_dump_masked_av_fn)\n"
+            "        security_dump_masked_av_fn(policydb, scontext, tcontext, tclass, masked, \"bounds\");\n",
+            "    security_dump_masked_av_fn(policydb, scontext, tcontext, tclass, masked, \"bounds\");\n",
+        ),
+        (
+            "    if (context_struct_compute_av_fn) {\n"
+            "        context_struct_compute_av_fn(policydb, scontext, tcontext, tclass, avd, NULL);\n"
+            "    } else {\n"
+            "        context_struct_compute_av(policydb, scontext, tcontext, tclass, avd, NULL);\n"
+            "    }\n",
+            "    context_struct_compute_av_fn(policydb, scontext, tcontext, tclass, avd, NULL);\n",
+        ),
+    ]
+
+    def _fix_selinux_hide_always_true_guards(self):
+        """Removes NULL-checks that became always-true after the SUSFS patch.
+
+        SukiSU-Ultra v4.2.0 declares these two as function POINTERS,
+        filled in at init by its symbol resolver:
+
+            static void (*security_dump_masked_av_fn)(...) = NULL;
+            static void (*context_struct_compute_av_fn)(...) = NULL;
+
+        so `if (security_dump_masked_av_fn)` is a meaningful NULL check.
+
+        susfs4ksu's 10_enable_susfs_for_ksu.patch replaces that whole
+        block with real extern FUNCTION declarations, because its
+        kernel-side patch (50_add_susfs_in_gki-*.patch) defines both
+        symbols in security/selinux/ss/services.c - verified present
+        there, so they always exist and can be called unconditionally.
+        What the patch does NOT do is remove the now-pointless NULL
+        checks it left behind. Testing a function's address as a boolean
+        is always true, and clang says so:
+
+            error: address of function 'security_dump_masked_av_fn' will
+            always evaluate to 'true' [-Werror,-Wpointer-bool-conversion]
+
+        This only bites on 6.6 and up: both the declarations and the
+        call sites live inside
+        `#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)`, so on
+        android12/13/14 the whole region is preprocessed away and never
+        compiled. That is why android14-6.1 built fine with the exact
+        same SukiSU tag and the byte-identical SUSFS patch.
+
+        Dropping the guard (rather than silencing the warning) matches
+        what the patched code actually means: call the function that is
+        now guaranteed to be linked in. The dead `else` branch calling
+        the local static context_struct_compute_av() goes with it.
+        """
+        target = self.work_dir / "common/drivers/kernelsu/feature/selinux_hide.c"
+        if not target.exists():
+            target = self.work_dir / "KernelSU/kernel/feature/selinux_hide.c"
+        if not target.exists():
+            logger.info("selinux_hide.c not found - skipping always-true guard fix")
+            self._mark("selinux_hide_guards", "skipped", "file not found")
+            return
+
+        text = target.read_text()
+        applied = 0
+        for old, new in self._SELINUX_HIDE_GUARD_FIXES:
+            if old in text:
+                text = text.replace(old, new, 1)
+                applied += 1
+
+        if applied == 0:
+            logger.info(
+                "selinux_hide.c has no always-true _fn guards to fix "
+                "(already handled upstream, or this SukiSU/SUSFS pairing "
+                "doesn't produce them)."
+            )
+            self._mark("selinux_hide_guards", "skipped", "no matching guards")
+            return
+
+        target.write_text(text)
+        logger.info(f"selinux_hide.c: removed {applied} always-true _fn guard(s) "
+                    f"(-Wpointer-bool-conversion would be fatal on 6.6+)")
+        self._mark("selinux_hide_guards", "applied", f"{applied} guard(s) removed")
 
     def apply_susfs_kernelsu_patch(self):
         # susfs4ksu ships in two halves:
@@ -2429,7 +2698,7 @@ CONFIG_CIFS_XATTR=y
             if self.config.use_extra_net:
                 logger.info("Adding extra networking configs (--extra-net): "
                             "IPv6 NAT, nftables, extra ipset types")
-                f.write(self.EXTRA_NET_CONFIG_TEMPLATE)
+                f.write(self._extra_net_config_text())
 
         if self.config.use_ath9k:
             # Appended verbatim, comments and all: the file explains why
@@ -2674,6 +2943,130 @@ CONFIG_CIFS_XATTR=y
         
         logger.info("-" * 60)
 
+    def _disable_bazel_check_defconfig(self):
+        """Turns off Kleaf's defconfig equality check at its real source.
+
+        We already strip the string 'check_defconfig' out of
+        common/build.config.gki - but that only does anything on the
+        LEGACY build.sh path, where check_defconfig is a literal command
+        in that file. Under Bazel/Kleaf the check is reached differently
+        (via POST_DEFCONFIG_CMDS, and/or as an attribute on the
+        kernel_build rule in common/BUILD.bazel), so that strip is a
+        no-op on exactly the branches (android14+) where the check keeps
+        failing.
+
+        Kleaf requires gki_defconfig to be in canonical
+        `make savedefconfig` form. _canonicalize_defconfig() tries to
+        satisfy that by regenerating it with the HOST toolchain, but the
+        host clang is not Kleaf's hermetic clang, so the canonical form
+        the two produce can legitimately differ - and then the build
+        fails with 'savedefconfig does not match ...' even though
+        nothing is actually wrong with our CONFIG_ additions.
+
+        Two mechanisms are applied here, because which one works depends
+        on the branch:
+
+        1. POST_DEFCONFIG_CMDS=true in common/build.config.gki.aarch64.
+           Kleaf still consumes build.config on android14-6.1 and
+           android15-6.6, and the defconfig check runs as part of
+           POST_DEFCONFIG_CMDS - so replacing the whole variable with a
+           no-op kills it cleanly, without touching Bazel files at all.
+           Note this targets build.config.gki.aarch64, NOT
+           build.config.gki: .aarch64 sources .gki, so setting it at the
+           end of .aarch64 is what actually wins. Our existing strip of
+           the literal string 'check_defconfig' from build.config.gki is
+           left alone - it's what the legacy build.sh path needs.
+
+        2. check_defconfig = "disabled" on the kernel_aarch64 target in
+           common/BUILD.bazel. Newer Kleaf (android16-6.12 onward) has
+           been migrating off build.config, so mechanism 1 may have
+           nothing to act on there; this is the attribute-level
+           equivalent and is what WildKernels' build-kernel action uses.
+
+        Neither is a no-op if the other already worked - they're
+        idempotent and cheap, so both go in.
+
+        Note what this does NOT disable: KMI symbol-list strict mode and
+        the symbol-list violation check both stay ON (see build_kernel()
+        for why that matters - a build with those off compiled fine and
+        bootlooped a real device). This only stops Bazel from insisting
+        that our modified gki_defconfig round-trips byte-identically.
+        """
+        # --- 1. POST_DEFCONFIG_CMDS ---
+        gki_aarch64 = self.work_dir / "common/build.config.gki.aarch64"
+        if gki_aarch64.exists():
+            text = gki_aarch64.read_text()
+            lines = text.split("\n")
+            replaced = False
+            for i, line in enumerate(lines):
+                if line.startswith("POST_DEFCONFIG_CMDS="):
+                    lines[i] = "POST_DEFCONFIG_CMDS=true"
+                    replaced = True
+            if replaced:
+                gki_aarch64.write_text("\n".join(lines))
+                logger.info("Set POST_DEFCONFIG_CMDS=true in build.config.gki.aarch64")
+            else:
+                if not text.endswith("\n"):
+                    text += "\n"
+                gki_aarch64.write_text(text + "POST_DEFCONFIG_CMDS=true\n")
+                logger.info("Appended POST_DEFCONFIG_CMDS=true to build.config.gki.aarch64")
+            self._mark("bazel_post_defconfig_cmds", "applied",
+                       "replaced" if replaced else "appended")
+        else:
+            logger.info(
+                "common/build.config.gki.aarch64 not found - branch has likely "
+                "migrated off build.config; relying on the BUILD.bazel attribute."
+            )
+            self._mark("bazel_post_defconfig_cmds", "skipped", "build.config.gki.aarch64 absent")
+
+        # --- 2. BUILD.bazel attribute ---
+        bazel_build = self.work_dir / "common/BUILD.bazel"
+        if not bazel_build.exists():
+            logger.warning("common/BUILD.bazel not found - skipping check_defconfig disable")
+            self._mark("bazel_check_defconfig", "skipped", "BUILD.bazel not found")
+            return
+
+        content = bazel_build.read_text()
+        if 'check_defconfig = "disabled"' in content:
+            logger.info("check_defconfig already disabled in BUILD.bazel")
+            self._mark("bazel_check_defconfig", "skipped", "already disabled")
+            return
+
+        anchor = 'name = "kernel_aarch64",'
+        if anchor not in content:
+            if self.patch_status.get("bazel_post_defconfig_cmds", {}).get("status") == "applied":
+                # Expected on branches where kernel_aarch64 is produced by
+                # define_common_kernels() rather than spelled out as a
+                # literal target - there is no such line to anchor to.
+                # POST_DEFCONFIG_CMDS already neutralised the check, so
+                # this is a redundant belt, not a broken one.
+                logger.info(
+                    "No literal kernel_aarch64 target in common/BUILD.bazel "
+                    "(generated target) - POST_DEFCONFIG_CMDS already handled "
+                    "the defconfig check, nothing more to do."
+                )
+                self._mark("bazel_check_defconfig", "skipped",
+                           "generated target; POST_DEFCONFIG_CMDS covers it")
+                return
+            logger.warning(
+                "Could not find the kernel_aarch64 target in common/BUILD.bazel "
+                "AND POST_DEFCONFIG_CMDS could not be set either - nothing is "
+                "suppressing Kleaf's defconfig check. If the build fails with "
+                "'savedefconfig does not match', this is the place to look."
+            )
+            self._mark("bazel_check_defconfig", "failed",
+                       "no anchor and no POST_DEFCONFIG_CMDS fallback")
+            return
+
+        content = content.replace(
+            anchor,
+            anchor + '\n    check_defconfig = "disabled",',
+            1,
+        )
+        bazel_build.write_text(content)
+        logger.info('Injected check_defconfig = "disabled" into common/BUILD.bazel')
+        self._mark("bazel_check_defconfig", "applied", "kernel_aarch64 target")
+
     def _canonicalize_defconfig(self):
         """Bazel/Kleaf's kernel_config rule strictly requires
         gki_defconfig to be in canonical `make savedefconfig` form
@@ -2835,6 +3228,22 @@ CONFIG_CIFS_XATTR=y
         finally:
             self._stop_mem_monitor(mem_thread, mem_stop)
 
+    def _reported_lto_mode(self, is_legacy: bool) -> str:
+        """What LTO actually got used, for the report and PATCH_STATUS.
+
+        This used to hardcode "thin (Bazel default/fixed)" / "n/a (bazel)"
+        on the Bazel path, from when we always passed --lto=thin there.
+        We now pass --lto=full when the user asks for it and pass nothing
+        otherwise, so the old strings would misreport a full-LTO Bazel
+        build as thin - and the LTO mode is exactly the kind of thing
+        someone reads off the report months later and believes.
+        """
+        if is_legacy:
+            return self.config.lto_mode
+        if self.config.lto_mode == "full":
+            return "full (Bazel --lto=full)"
+        return "Bazel target default (no --lto passed)"
+
     def _write_build_report(self, success: bool, build_seconds: float, is_legacy: bool):
         """Writes a short, human-readable summary of how this kernel was
         actually built - so this doesn't have to be dug out of the full
@@ -2848,7 +3257,7 @@ CONFIG_CIFS_XATTR=y
             f"Kernel respin: {self.detected_respin or '(unknown - could not be determined)'}",
             f"Timestamp:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Build method:  {'Legacy build.sh' if is_legacy else 'Bazel (Kleaf)'}",
-            f"LTO mode used: {self.config.lto_mode if is_legacy else 'thin (Bazel default/fixed)'}",
+            f"LTO mode used: {self._reported_lto_mode(is_legacy)}",
             f"Peak RAM used:  {f'{self._peak_mem_used_mb / 1024:.1f} GB' if self._peak_mem_used_mb else '(could not be measured)'}",
             f"Result:        {'SUCCESS' if success else 'FAILED'}",
             f"Build time:    {build_seconds:.1f}s",
@@ -2931,8 +3340,6 @@ CONFIG_CIFS_XATTR=y
         # LTO (not a no-LTO fallback). So: force thin explicitly where
         # it's proven to work, and just omit --lto on branches affected
         # by this bug so Bazel's target default applies instead.
-        _THIN_LTO_BUG_KERNEL_VERSIONS = ("6.6", "6.12", "6.18")
-
         def _build_cmd() -> str:
             if is_legacy:
                 # LTO mode is user-selectable here (android12/android13,
@@ -2966,7 +3373,20 @@ CONFIG_CIFS_XATTR=y
             # build will fail loudly with the specific violations instead
             # - which is strictly more useful than a silent, unverified
             # "success".
-            lto_flag = "" if self.config.kernel_version in _THIN_LTO_BUG_KERNEL_VERSIONS else "--lto=thin "
+            # LTO: pass nothing by default and let the Bazel target's own
+            # default win. This is what WildKernels' build-kernel action
+            # does on EVERY Bazel branch, not just the ones where ThinLTO
+            # is known to trip the IR verifier - and it's the
+            # configuration their android14-6.1 / android15-6.6 /
+            # android16-6.12 builds actually ship from. Forcing
+            # --lto=thin was only ever a guess that happened to work on
+            # 6.1; there is no upstream reference build that passes it.
+            #
+            # --lto-mode full is still honoured here as an explicit
+            # opt-in (Kleaf accepts --lto=full), because full LTO on 6.6
+            # is a thing other projects do get working - just not via
+            # Kleaf's defaults. Treat it as an experiment, not a default.
+            lto_flag = "--lto=full " if self.config.lto_mode == "full" else ""
             frag_flag = "--defconfig_fragment=//common:arch/arm64/configs/kasan_fix.fragment "
             return (f"tools/bazel build --disk_cache={bazel_cache} --config=fast "
                     f"{lto_flag}{frag_flag}//common:kernel_aarch64/Image")
@@ -2976,7 +3396,33 @@ CONFIG_CIFS_XATTR=y
                 logger.info("Using legacy build method...")
             else:
                 logger.info("Using Bazel build method (KMI enforcement left ON)...")
-                self._canonicalize_defconfig()
+                self._disable_bazel_check_defconfig()
+                # Only canonicalize if POST_DEFCONFIG_CMDS could NOT be
+                # neutralised. Regenerating gki_defconfig through the HOST
+                # toolchain is not a neutral reformat: `make savedefconfig`
+                # re-evaluates every dependency using the host's detected
+                # capabilities, and silently drops anything the host can't
+                # satisfy. CONFIG_DEBUG_INFO_BTF is the live example -
+                # on 6.6 it depends on `!DEBUG_INFO_DWARF5 ||
+                # PAHOLE_VERSION >= 121`, and android15-6.6's gki_defconfig
+                # selects DWARF5, so a host without a recent pahole quietly
+                # removes BTF from the defconfig before Kleaf ever sees it.
+                # android14-6.1 selects DWARF4, where that dependency is
+                # satisfied unconditionally - which is exactly why BTF
+                # survived there and vanished here.
+                if self.patch_status.get("bazel_post_defconfig_cmds", {}).get("status") == "applied":
+                    logger.info(
+                        "Skipping host savedefconfig canonicalization - "
+                        "POST_DEFCONFIG_CMDS=true already disables Kleaf's "
+                        "defconfig check, and canonicalizing through the host "
+                        "toolchain silently drops host-unsatisfiable symbols."
+                    )
+                    self._mark("defconfig_canonicalization", "skipped",
+                               "not needed; POST_DEFCONFIG_CMDS covers the check")
+                else:
+                    self._canonicalize_defconfig()
+                    self._mark("defconfig_canonicalization", "applied",
+                               "host savedefconfig fallback")
                 self._write_kasan_choice_fragment()
                 bazel_cache.mkdir(parents=True, exist_ok=True)
 
@@ -3081,22 +3527,73 @@ CONFIG_CIFS_XATTR=y
         for name, rel_path in checks:
             logger.info(f"      -> {name}: {rel_path}")
 
+    # Path segments that mark a Bazel location as transient. Anything
+    # under a sandbox is deleted when the action finishes, so a .config
+    # found there can vanish between glob and read - which is exactly
+    # what happened on an android15-6.6 build: the glob picked
+    # .../sandbox/sandbox_stash/KernelBuildKmiSymbolListStrictMode/15/
+    # execroot/.../kernel_aarch64_config/out_dir/.config, and the read
+    # then died with ENOENT AFTER a fully successful kernel build.
+    _TRANSIENT_PATH_MARKERS = ("sandbox", "sandbox_stash", "execroot",
+                               "output_user_root")
+
+    @classmethod
+    def _is_transient_bazel_path(cls, path: Path) -> bool:
+        return any(part in cls._TRANSIENT_PATH_MARKERS for part in path.parts)
+
     def _find_built_config(self) -> Optional[Path]:
         """Locates the .config the build actually produced (not the
-        gki_defconfig we wrote into)."""
+        gki_defconfig we wrote into).
+
+        Stable locations are tried first, transient Bazel sandbox paths
+        are excluded outright, and the newest survivor wins. Callers must
+        still read defensively: Bazel can clean up underneath us at any
+        point after the build finishes.
+        """
         candidates = [
             self.work_dir / f"out/{self.config.android_version}-{self.config.kernel_version}/common/.config",
             self.work_dir / f"out/{self.config.android_version}-{self.config.kernel_version}/.config",
+            # Kleaf's stable published config output (bazel-bin is a
+            # symlink into the build root, not into a sandbox).
+            self.work_dir / "bazel-bin/common/kernel_aarch64_config/out_dir/.config",
         ]
         for c in candidates:
-            if c.exists():
+            if c.exists() and not self._is_transient_bazel_path(c):
                 return c
-        found = sorted(
-            (self.work_dir / "out").glob("**/.config"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        ) if (self.work_dir / "out").exists() else []
-        return found[0] if found else None
+        found = []
+        if (self.work_dir / "out").exists():
+            for p in (self.work_dir / "out").glob("**/.config"):
+                if self._is_transient_bazel_path(p):
+                    continue
+                try:
+                    found.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
+        found.sort(reverse=True)
+        return found[0][1] if found else None
+
+    @staticmethod
+    def _read_config_symbols(path: Path):
+        """Parses a .config into (present set, values dict).
+
+        Returns None if the file has disappeared - a real possibility for
+        Bazel outputs, and never a reason to fail an otherwise successful
+        build.
+        """
+        try:
+            text = path.read_text(errors="replace")
+        except OSError:
+            return None
+        present, values = set(), {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            name, sep, value = line.partition("=")
+            if sep and value not in ("n", '""'):
+                present.add(name)
+                values[name] = value
+        return present, values
 
     # Symbols this pipeline writes into gki_defconfig and expects to
     # survive into the real .config. The first element of each tuple is
@@ -3123,7 +3620,12 @@ CONFIG_CIFS_XATTR=y
             # spot-checked here happened to be survivors. Listing the
             # full set means the next upstream removal shows up on the
             # first build after it happens.
-            ("CONFIG_KSU_SUSFS_SUS_PATH", False),
+            # configure_kernel() deliberately writes
+            # CONFIG_KSU_SUSFS_SUS_PATH=n on 6.6 ("6.6 needs it off"), so
+            # expecting it there turns a deliberate choice into a reported
+            # failure. Expect it only where we actually ask for it.
+        ] + ([("CONFIG_KSU_SUSFS_SUS_PATH", False)]
+             if self.config.kernel_version != "6.6" else []) + [
             ("CONFIG_KSU_SUSFS_SUS_MAP", False),
             ("CONFIG_KSU_SUSFS_SUS_MOUNT", False),
             ("CONFIG_KSU_SUSFS_SUS_KSTAT", False),
@@ -3189,11 +3691,37 @@ CONFIG_CIFS_XATTR=y
             # networking option means that feature is missing, which is
             # worth a loud warning, but throwing away an otherwise good
             # kernel over it would be out of proportion.
-            for line in self.EXTRA_NET_CONFIG_TEMPLATE.splitlines():
+            for line in self._extra_net_config_text().splitlines():
                 line = line.strip()
                 if line.startswith("CONFIG_") and "=" in line:
                     symbols.append((line.split("=", 1)[0], False))
         return symbols
+
+    def _extra_net_config_text(self) -> str:
+        """EXTRA_NET_CONFIG_TEMPLATE with symbols that don't exist on this
+        kernel version filtered out.
+
+        CONFIG_NFT_COUNTER was removed upstream by commit 023223dfbfb3
+        ("netfilter: nf_tables: make counter support built-in") - it
+        exists as a selectable symbol only in 3.13 through 5.16. From
+        5.17 onward the counter expression is unconditionally part of
+        nf_tables core, so there is nothing to enable.
+
+        This matters because writing a symbol Kconfig doesn't know about
+        is silently dropped, and _expected_config_symbols() then
+        correctly reports it missing from the built .config - producing
+        an effective_config FAILURE for a feature that is actually
+        present. Filtering here (rather than special-casing the
+        verifier) keeps the "written" and "expected" lists derived from
+        the same source, which is the property that stops them drifting.
+        """
+        text = self.EXTRA_NET_CONFIG_TEMPLATE
+        if self._version_tuple(self.config.kernel_version) >= (5, 17):
+            text = "\n".join(
+                line for line in text.splitlines()
+                if not line.strip().startswith("CONFIG_NFT_COUNTER=")
+            ) + "\n"
+        return text
 
     def _expected_config_values(self) -> list:
         """(symbol, expected, fatal) where expected is "y"/"m", or None
@@ -3239,16 +3767,17 @@ CONFIG_CIFS_XATTR=y
             self._mark("effective_config", "skipped", "built .config not found")
             return
 
-        present = set()
-        values = {}
-        for line in config_path.read_text(errors="replace").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            name, sep, value = line.partition("=")
-            if sep and value not in ("n", '""'):
-                present.add(name)
-                values[name] = value
+        parsed = self._read_config_symbols(config_path)
+        if parsed is None:
+            logger.warning(
+                f"Effective-config verification skipped: {config_path} "
+                f"disappeared before it could be read (Bazel cleans up "
+                f"sandbox outputs). The Image IKCONFIG check below reads "
+                f"the artifact itself and does not depend on this file."
+            )
+            self._mark("effective_config", "skipped", "built .config vanished before read")
+            return
+        present, values = parsed
 
         missing_fatal, missing_soft = [], []
         for symbol, fatal in self._expected_config_symbols():
@@ -3293,6 +3822,152 @@ CONFIG_CIFS_XATTR=y
             "applied" if not missing_soft else "failed",
             "all expected symbols present" if not missing_soft
             else f"dropped by Kconfig: {', '.join(missing_soft)}",
+        )
+
+    def _find_built_image(self) -> Optional[Path]:
+        """The uncompressed Image this build produced, on either path."""
+        if (self.work_dir / "build/build.sh").exists():
+            candidate = (self.work_dir
+                         / f"out/{self.config.android_version}-{self.config.kernel_version}/dist/Image")
+        else:
+            candidate = self.work_dir / "bazel-bin/common/kernel_aarch64/Image"
+        return candidate if candidate.exists() else None
+
+    @staticmethod
+    def _extract_ikconfig(image_bytes: bytes) -> Optional[str]:
+        """Pulls the kernel's own embedded .config out of a built Image.
+
+        CONFIG_IKCONFIG stores the gzipped .config inside the image,
+        bracketed by the magic markers IKCFG_ST / IKCFG_ED. This is the
+        same data the kernel later serves as /proc/config.gz.
+        """
+        import gzip
+        start = image_bytes.find(b"IKCFG_ST")
+        if start < 0:
+            return None
+        end = image_bytes.find(b"IKCFG_ED", start + 8)
+        if end < 0:
+            return None
+        try:
+            return gzip.decompress(image_bytes[start + 8:end]).decode("utf-8", errors="replace")
+        except (OSError, EOFError, gzip.BadGzipFile):
+            return None
+
+    def _verify_image_ikconfig(self):
+        """Verifies the FINAL ARTIFACT, not the build tree.
+
+        _verify_effective_config() reads the .config found under out/.
+        That is one step better than trusting gki_defconfig, but it still
+        trusts that the .config we located is the one this Image was
+        actually built from - which is exactly the assumption that breaks
+        on a stale out/ directory, a reused workspace, or a Bazel build
+        whose real config lives in a content-hashed cache path.
+
+        This check closes that gap by reading the config out of the Image
+        itself (CONFIG_IKCONFIG's gzipped blob between the IKCFG_ST and
+        IKCFG_ED markers - the same bytes the kernel serves as
+        /proc/config.gz). If the two disagree, the .config we verified was
+        not the one that produced this Image, and the earlier PASS was
+        meaningless.
+
+        Be clear about what this does and does not prove. It proves the
+        shipped Image contains the configuration that was asked for. It
+        does NOT prove the kernel boots - nothing short of running it on
+        matching hardware does. It is evidence, not a boot test.
+        """
+        image = self._find_built_image()
+        if image is None:
+            logger.warning(
+                "Image IKCONFIG verification skipped: no uncompressed Image "
+                "found at the expected location for this build method."
+            )
+            self._mark("image_ikconfig", "skipped", "Image not found")
+            return
+
+        config_text = self._extract_ikconfig(image.read_bytes())
+        if config_text is None:
+            logger.warning(
+                "Image IKCONFIG verification skipped: no readable IKCFG_ST/"
+                "IKCFG_ED blob in the Image. This needs CONFIG_IKCONFIG=y, "
+                "which stock GKI normally sets (it is what backs "
+                "/proc/config.gz). If it is missing, that is worth knowing "
+                "in its own right."
+            )
+            self._mark("image_ikconfig", "skipped", "no IKCONFIG blob in Image")
+            return
+
+        present, values = set(), {}
+        for line in config_text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            name, sep, value = line.partition("=")
+            if sep and value not in ("n", '""'):
+                present.add(name)
+                values[name] = value
+
+        missing_fatal, missing_soft = [], []
+        for symbol, fatal in self._expected_config_symbols():
+            if symbol not in present:
+                (missing_fatal if fatal else missing_soft).append(symbol)
+
+        for symbol, expected, fatal in self._expected_config_values():
+            actual = values.get(symbol)
+            if expected is None and actual is not None:
+                msg = f"{symbol}={actual} but it MUST be absent"
+            elif expected is not None and actual != expected:
+                msg = f"{symbol}={actual or 'absent'} but {expected} was requested"
+            else:
+                continue
+            (missing_fatal if fatal else missing_soft).append(msg)
+
+        logger.info(f"=== Image IKCONFIG verification ({image.name}, "
+                    f"{len(present)} symbols set) ===")
+
+        # Cross-check against the .config _verify_effective_config() read.
+        # A disagreement means we verified a different tree than we shipped.
+        drift = []
+        config_path = self._find_built_config()
+        tree_parsed = self._read_config_symbols(config_path) if config_path else None
+        if tree_parsed is not None:
+            tree_present = tree_parsed[0]
+            for symbol, _fatal in self._expected_config_symbols():
+                in_tree = symbol in tree_present
+                in_image = symbol in present
+                if in_tree != in_image:
+                    drift.append(
+                        f"{symbol}: .config={'set' if in_tree else 'unset'} "
+                        f"but Image={'set' if in_image else 'unset'}"
+                    )
+
+        if missing_soft:
+            logger.warning(
+                "Requested but NOT present in the shipped Image:\n  "
+                + "\n  ".join(missing_soft)
+            )
+        if drift:
+            raise RuntimeError(
+                "Image IKCONFIG disagrees with the .config that was verified "
+                f"({config_path}):\n  " + "\n  ".join(drift)
+                + "\nThe .config checked earlier is not the one this Image was "
+                  "built from, so that check proved nothing. Most likely a "
+                  "stale out/ directory or a reused workspace. Do not flash "
+                  "this build."
+            )
+        if missing_fatal:
+            raise RuntimeError(
+                "Image IKCONFIG verification failed - mandatory options are "
+                f"absent from the shipped Image ({image}):\n  "
+                + "\n  ".join(missing_fatal)
+                + "\nDo not flash this build."
+            )
+        if not missing_soft:
+            logger.info("All expected config symbols present in the shipped Image - OK")
+        self._mark(
+            "image_ikconfig",
+            "applied" if not missing_soft else "failed",
+            f"{len(present)} symbols; all expected present" if not missing_soft
+            else f"absent from Image: {', '.join(missing_soft)}",
         )
 
     def patch_kpm_image(self):
@@ -3512,6 +4187,7 @@ CONFIG_CIFS_XATTR=y
                 self._mark("ntsync", "skipped", "not requested")
             self.add_kernel_supatch()
             self.add_kernelsu()
+            self._pin_ksu_version_code()
             if self.config.disable_safemode:
                 self.apply_safemode_patch()
             else:
@@ -3520,6 +4196,7 @@ CONFIG_CIFS_XATTR=y
             self.add_vendor_module_blacklist()
             self.apply_susfs_patches()
             self.apply_susfs_kernelsu_patch()
+            self._fix_selinux_hide_always_true_guards()
             self.apply_sukisu_patches()
             self.apply_zram_patches()
             self.apply_task_mmu_fixes()
@@ -3551,6 +4228,7 @@ CONFIG_CIFS_XATTR=y
 
             self._verify_expected_objects()
             self._verify_effective_config()
+            self._verify_image_ikconfig()
             ath9k_artifacts = self.collect_ath9k_modules()
 
             # Rewritten now that the build is done: the earlier call

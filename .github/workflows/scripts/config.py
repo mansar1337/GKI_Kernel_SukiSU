@@ -70,12 +70,57 @@ ANDROID_KERNEL_MAP = {
 }
 
 # Repository configuration
+#
+# DEFAULT_KSU_REF: the ref setup.sh is told to check out when no explicit
+# --ksu-commit is given.
+#
+# This used to be the literal string "builtin", passed as `bash -s builtin`.
+# That was never a mode flag - setup.sh's only non-option argument is
+# <commit-or-tag>, and the word "builtin" appears nowhere in setup.sh's
+# history. The reason it silently "worked" for years is that SukiSU-Ultra
+# genuinely HAS a branch named `builtin`, so `git checkout builtin`
+# succeeded and the build quietly tracked that branch instead of a tag.
+#
+# That branch has since diverged hard from main (it carries commit
+# ad8949ef "kernel: Synchronize changes from upstream and remove susfs",
+# and still uses the pre-refactor flat layout: kernel/ksu.c, no
+# kernel/core/, no kernel/Kbuild). susfs4ksu's
+# 10_enable_susfs_for_ksu.patch is written against the NEW layout, so
+# applying it to `builtin` fails wholesale.
+#
+# Measured, patch --dry-run of susfs bca0d23's KernelSU patch per ref:
+#   main     ->  2 failed hunks
+#   v4.2.0   ->  2 failed hunks
+#   v4.1.3   -> 29 failed hunks
+#   v4.0.0   -> 26 failed hunks
+#   builtin  -> 64 failed hunks   <- what we were building
+#
+# So: pin a real tag. Bump this deliberately, not accidentally.
+DEFAULT_KSU_REF = "v4.2.0"
+
 KSU_REPO_CONFIG = {"repo_url": "https://github.com/SukiSU-Ultra/SukiSU-Ultra.git",
                     "branch": "main",
                     "setup_script": "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"}
 
 # SUSFS repository configuration
+#
+# ShirkNeko's GitHub fork only carries branches up to gki-android15-6.6 -
+# there is no gki-android16-6.12 and no 6.18/android17 branch on it at all.
+# Upstream (simonpunk on GitLab) does have gki-android16-6.12 (+ -dev), and
+# is what WildKernels tracks. Commit hashes are shared between the two for
+# the branches both carry (e.g. bca0d23 on gki-android13-5.15 is the same
+# commit WildKernels pin), so an existing --susfs-commit pin stays valid
+# across either remote.
+#
+# SUSFS_BRANCH_REPOS maps a kernel branch to the remote that actually has
+# it. Anything not listed falls back to SUSFS_REPO_CONFIG["repo_url"], and
+# the builder retries against SUSFS_UPSTREAM_URL if the primary clone fails.
 SUSFS_REPO_CONFIG = {"repo_url": "https://github.com/ShirkNeko/susfs4ksu.git"}
+SUSFS_UPSTREAM_URL = "https://gitlab.com/simonpunk/susfs4ksu.git"
+# Keys are BuildConfig.kernel_branch values, i.e. "gki-<android>-<kver>".
+SUSFS_BRANCH_REPOS = {
+    "gki-android16-6.12": SUSFS_UPSTREAM_URL,
+}
 
 # SukiSU Patch repository configuration
 SUKISU_PATCH_REPO_CONFIG = {"repo_url": "https://github.com/ShirkNeko/SukiSU_patch.git"}
@@ -110,6 +155,7 @@ class BuildConfig:
     os_patch_level: str
     kernelsu_version: str = "Stable"
     kernelsu_commit: Optional[str] = None
+    ksu_version_code: Optional[int] = None
     susfs_commit: Optional[str] = None
     use_zram: bool = False
     use_kpm: bool = True

@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] ABI: use ABI padding for SYSVIPC (android15-6.6 context)
+
+Same transformation as droidspaces_sysvipc_kabi_slots678.patch (reserve
+slots 6/7/8), regenerated against android15-6.6 include/linux/sched.h.
+The generic patch trailing context expects the "New fields for
+task_struct" comment immediately after ANDROID_KABI_RESERVE(8); on
+android15-6.6 a CONFIG_RV block sits there instead, so the hunk only
+matched at fuzz 2. Regenerated here so it applies at -F 0.
+
+--- a/include/linux/sched.h	2026-09-13 14:11:14.815268727 +0000
++++ b/include/linux/sched.h	2026-09-13 14:11:14.817603655 +0000
+@@ -1073,8 +1073,8 @@
+ 	struct nameidata		*nameidata;
+ 
+ #ifdef CONFIG_SYSVIPC
+-	struct sysv_sem			sysvsem;
+-	struct sysv_shm			sysvshm;
++	// struct sysv_sem			sysvsem;
++	// struct sysv_shm			sysvshm;
+ #endif
+ #ifdef CONFIG_DETECT_HUNG_TASK
+ 	unsigned long			last_switch_count;
+@@ -1524,9 +1524,15 @@
+ 	ANDROID_KABI_RESERVE(3);
+ 	ANDROID_KABI_RESERVE(4);
+ 	ANDROID_KABI_RESERVE(5);
++
++#ifdef CONFIG_SYSVIPC
++	ANDROID_KABI_USE(6, struct sysv_sem sysvsem);
++	_ANDROID_KABI_REPLACE(ANDROID_KABI_RESERVE(7); ANDROID_KABI_RESERVE(8), struct sysv_shm sysvshm);
++#else
+ 	ANDROID_KABI_RESERVE(6);
+ 	ANDROID_KABI_RESERVE(7);
+ 	ANDROID_KABI_RESERVE(8);
++#endif
+ 
+ #ifdef CONFIG_RV
+ 	/*

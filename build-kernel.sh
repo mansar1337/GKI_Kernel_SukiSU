@@ -107,9 +107,26 @@ while [ "$#" -gt 0 ]; do
             NO_HIDE_STUFF="1"
             shift
             ;;
+        --ksu-version-code)
+            KSU_VERSION_CODE="$2"
+            shift 2
+            ;;
+        --ksu-version-code=*)
+            KSU_VERSION_CODE="${1#--ksu-version-code=}"
+            shift
+            ;;
+        --no-ath9k)
+            # ath9k_htc support needs a per-branch
+            # ath9k_htc_no_mac80211_leds_<branch>.patch (the MAC80211_LEDS
+            # select differs per kernel version), and one only exists for
+            # android13-5.15 so far. Use this when building any other
+            # branch, where the antenna isn't relevant anyway.
+            NO_ATH9K="1"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--ksu-commit <tag|commit|branch>] [--susfs-commit <commit>] [--no-hide-stuff]"
+            echo "Usage: $0 [--ksu-commit <tag|commit|branch>] [--susfs-commit <commit>] [--no-hide-stuff] [--no-ath9k] [--ksu-version-code <N>]"
             exit 1
             ;;
     esac
@@ -118,14 +135,20 @@ done
 # ---- Default values ----
 ANDROID_VERSION="android13"
 KERNEL_VERSION="5.15"
-SUB_LEVEL="211"
-OS_PATCH="2026-06"
-KERNEL_TAG="android13-5.15.211_r00"
+SUB_LEVEL="216"
+OS_PATCH="2026-09"
+# Either a respin tag (android13-5.15.216_r00) or a raw commit SHA from
+# android.googlesource.com/kernel/common. This is the SHA of the 216 tree
+# that has been built and confirmed booting on device.
+# NOTE: this is the KERNEL source ref - do NOT paste a susfs4ksu commit
+# here. They are different repositories; the build will fail with an
+# HTTP 500 from googlesource if they get swapped.
+KERNEL_TAG="013ca9e40fcad3368249133b0fb4e00762b40625"
 # Set to "1" if KERNEL_TAG above is an LTS-merge respin (e.g.
 # android13-5.15.209_r00, dotted sub_level style) rather than a regular
 # date-based one (e.g. android13-5.15-2026-06_r4) - adds a "-lts" marker
 # to the output filename so it's clear at a glance where it came from.
-IS_LTS=""
+IS_LTS="1"
 # Set to "1" to enable Droidspaces container-runtime support (real
 # Linux namespace isolation - see README's "Droidspaces" section).
 # Wired up for android12-5.10/android13-5.15/android14-6.1/android15-6.6
@@ -184,8 +207,14 @@ BLACKLIST_MODULES=""
 # and fails if they disagree, so a mismatch costs a build, not a flash.
 # Modules land in <workspace>/ath9k-modules/ alongside Module.symvers.
 #
-# Set to "" to build without it.
+# Set to "" to build without it, or pass --no-ath9k on the command line
+# (needed for any branch other than android13-5.15, which is the only one
+# that currently ships the required no_mac80211_leds patch).
 ATH9K="1"
+[ -n "$NO_ATH9K" ] && ATH9K=""
+# Pin the version number SukiSU reports (e.g. 40901 to pair with the
+# manager released from tag v4.2.0). Empty = use the live GitHub count.
+KSU_VERSION_CODE="${KSU_VERSION_CODE:-}"
 # Set to "1" to permanently patch out KernelSU/SukiSU volume-key safe-mode
 # detection. Defaults OFF: SukiSU-Ultra fixed the safe-mode bug upstream
 # (see the "Safe Mode Disabled" fix in nikakvo/GKI_KernelSU_SUSFS actions
@@ -269,7 +298,7 @@ check_dependencies
 echo "========================================"
 echo "  GKI KernelSU SUSFS - Build Menu"
 echo "========================================"
-echo "1) Default (android13 / 5.15 / 211 / 2026-06)"
+echo "1) Default (android13 / 5.15 / 216 / 2026-09)"
 echo "2) Custom (choose your own versions)"
 echo "3) All versions from matrix.json"
 echo "========================================"
@@ -341,6 +370,7 @@ for key, entries in data.items():
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
         [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
         [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
+        [ -n "$KSU_VERSION_CODE" ] && EXTRA_ARGS+=(--ksu-version-code "$KSU_VERSION_CODE")
         [ -n "$DISABLE_SAFEMODE" ] && EXTRA_ARGS+=(--disable-safemode)
         [ -n "$USE_ZRAM" ] && EXTRA_ARGS+=(--zram)
         [ -z "$USE_MGLRU" ] && EXTRA_ARGS+=(--no-mglru)
@@ -426,6 +456,7 @@ EXTRA_ARGS=()
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
 [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
 [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
+[ -n "$KSU_VERSION_CODE" ] && EXTRA_ARGS+=(--ksu-version-code "$KSU_VERSION_CODE")
 [ -n "$DISABLE_SAFEMODE" ] && EXTRA_ARGS+=(--disable-safemode)
 [ -n "$USE_ZRAM" ] && EXTRA_ARGS+=(--zram)
 [ -z "$USE_MGLRU" ] && EXTRA_ARGS+=(--no-mglru)

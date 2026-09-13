@@ -39,6 +39,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--os-patch")
     parser.add_argument("--ksu-version", choices=[v.value for v in KSUVersion], default=KSUVersion.STABLE.value)
     parser.add_argument("--ksu-commit", default=None)
+    parser.add_argument("--ksu-version-code", type=int, default=None,
+                        help="Pin the version number SukiSU reports (e.g. 40901). "
+                             "By default SukiSU's Kbuild curls GitHub for main's "
+                             "live commit count, so the SAME source produces a "
+                             "different number on different days - and the manager "
+                             "released with that source expects one exact value.")
     parser.add_argument("--susfs-commit", default=None,
                         help="Pin susfs4ksu instead of tracking its branch HEAD. NOTE: "
                              "susfs4ksu keeps a SEPARATE BRANCH per GKI version "
@@ -148,6 +154,7 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         os_patch_level=args.os_patch or "2025-02",
         kernelsu_version=args.ksu_version,
         kernelsu_commit=args.ksu_commit,
+        ksu_version_code=args.ksu_version_code,
         susfs_commit=args.susfs_commit,
         use_zram=args.zram,
         use_kpm=not args.no_kpm,
