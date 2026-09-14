@@ -41,7 +41,27 @@ Since forked, this repo has diverged significantly (exact GKI respin pinning inc
 
 Every feature below ships with the exact command to confirm it's **actually active on your device** — run each in a root shell (`adb shell` then `su`, or a terminal app like Termux). This is the single source of truth for verification; the releases just list the feature names.
 
-> Some features are **opt-in per build** (`--bbg`, `--droidspaces`, `--bbr-version bbr3`, ...) or only wired up on certain branches. If a check below comes back empty, first confirm that build actually enabled it — see the [build's patch-status summary](#build-matrix).
+> Some features are **opt-in per build** (`--bbg`, `--droidspaces`, `--bbr-version bbr3`, `--extra-net`, ...) or only wired up on certain branches. If a check below comes back empty, first confirm that build actually enabled it — see the [build's patch-status summary](#build-matrix). Everything marked *(`--flag`)* below is on by default in `build-kernel.sh` and in the Actions workflows, so official releases have it.
+
+### Check everything at once
+
+Rather than running the commands below one by one, grab **`check-features.sh`** (shipped with every release, and in the repo root) and run it once:
+
+```bash
+su
+sh /sdcard/check-features.sh
+```
+
+It reads the kernel's own embedded config plus the live `/proc` and `/sys` state and prints one line per feature:
+
+| | |
+|---|---|
+| `OK` | present and active |
+| `MISSING` | expected but absent — worth reporting as an issue |
+| `NOT BUILT` | that flag was off for this build, so it's not a fault |
+| `N/A` | can't be verified from the device (the line says why) |
+
+Exit code is `0` unless something is `MISSING`. `-v` adds the measured value for each line, `--no-color` gives plain text for pasting into an issue. Plain POSIX `sh` — no bash, no busybox extras, no Termux required.
 
 ### Root & hiding
 
@@ -57,8 +77,6 @@ Active if `sukisu_kpm_version` is listed.
 
 **Magic Mount** — overlay-based mounting that lets root modules modify the filesystem without touching the underlying partitions, improving compatibility and reducing detection surface.
 
-**Safe Mode Removal** — volume-key safe-mode detection permanently patched out (built by default; opt out by omitting `--disable-safemode`). Most users rely on [YABP](https://github.com/Magisk-Modules-Repo/YetAnotherBootloopProtector) instead.
-
 ### Networking
 
 **BBR v3** — Google's improved successor to BBR v1: better fairness and less bufferbloat under load. Backported via [WildKernels' kABI-compliant patch](https://github.com/WildKernels/kernel_patches/tree/main/common/bbrv3), selected **in place of** BBR v1. Falls back to BBR v1 automatically if the patch doesn't apply on a given branch/sub_level. See [BBRv3 details](#bbrv3-details) below.
@@ -67,7 +85,7 @@ su -c "cat /proc/sys/net/ipv4/tcp_congestion_control"
 ```
 Active if the output is `bbr3` (not `bbr`).
 
-**Additional TCP Congestion Control (BIC, Westwood+, H-TCP)** — extra selectable algorithms alongside BBR/CUBIC/Reno. Doesn't change the default — just makes more available to switch to at runtime (Westwood suits lossy/wireless links).
+**Additional TCP Congestion Control (BIC, Westwood+, H-TCP)** *(`--extra-net`)* — extra selectable algorithms alongside BBR/CUBIC/Reno. Doesn't change the default — just makes more available to switch to at runtime (Westwood suits lossy/wireless links).
 ```bash
 su -c "cat /proc/sys/net/ipv4/tcp_available_congestion_control"
 ```
@@ -79,7 +97,7 @@ su -c "tc qdisc add dev lo root cake && tc qdisc show dev lo && tc qdisc del dev
 ```
 Active if `qdisc show` lists `qdisc cake ...`.
 
-**WireGuard** — built-in kernel-level WireGuard VPN — lightweight, high-performance alternative to OpenVPN/IPsec.
+**WireGuard** *(`--extra-net`)* — built-in kernel-level WireGuard VPN — lightweight, high-performance alternative to OpenVPN/IPsec.
 ```bash
 su -c "zcat /proc/config.gz | grep CONFIG_WIREGUARD"
 ```
@@ -91,7 +109,7 @@ su -c "ipset create test hash:ip && ipset destroy test"
 ```
 Active if it runs with no "Kernel module not found" error.
 
-**TTL / Hop-Limit Target (netfilter)** — `iptables`/`ip6tables` target (`XT_TARGET_HL`) that rewrites a packet's TTL (IPv4) / Hop Limit (IPv6) — commonly used to normalize tethered/hotspot traffic so carriers can't detect it via the TTL decrement.
+**TTL / Hop-Limit Target (netfilter)** — `iptables`/`ip6tables` target (`IP_NF_TARGET_TTL` / `IP6_NF_TARGET_HL`, plus `XT_TARGET_HL` with `--extra-net`) that rewrites a packet's TTL (IPv4) / Hop Limit (IPv6) — commonly used to normalize tethered/hotspot traffic so carriers can't detect it via the TTL decrement.
 ```bash
 su -c "iptables -t mangle -A POSTROUTING -j TTL --ttl-set 65 && iptables -t mangle -D POSTROUTING -j TTL --ttl-set 65"
 ```
@@ -103,7 +121,7 @@ su -c "iptables -t mangle -A POSTROUTING -j CONNMARK --set-mark 1 && iptables -t
 ```
 Active if both commands run with no "No chain/target/match by that name" error.
 
-**CIFS/SMB Network Filesystem** — kernel SMB3/CIFS client (`CONFIG_CIFS`): mount a Samba/Windows share directly (`mount -t cifs //server/share /mnt/point`) instead of via an app. The driver is always present; mounting something real needs a reachable SMB server.
+**CIFS/SMB Network Filesystem** *(`--extra-net`)* — kernel SMB3/CIFS client (`CONFIG_CIFS`): mount a Samba/Windows share directly (`mount -t cifs //server/share /mnt/point`) instead of via an app. The driver is always present; mounting something real needs a reachable SMB server.
 ```bash
 su -c "cat /proc/filesystems | grep cifs"
 ```
