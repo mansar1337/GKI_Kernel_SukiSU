@@ -45,11 +45,26 @@ Every feature below ships with the exact command to confirm it's **actually acti
 
 ### Check everything at once
 
-Rather than running the commands below one by one, grab **`check-features.sh`** (shipped with every release, and in the repo root) and run it once:
+Rather than running the commands below one by one, grab **`check-features.sh`** (shipped with every release, and in the repo root) and run it once.
+
+**Copy it out of `/sdcard` first.** Under `su` the root shell lives in a different mount namespace, where `/storage/emulated/0` is either invisible or mounted `noexec` — so running it straight from the Download folder fails, with or without `sh`.
+
+In Termux:
 
 ```bash
-su
-sh /sdcard/check-features.sh
+cp /sdcard/Download/check-features.sh ~
+cd ~
+chmod +x check-features.sh
+su -c ./check-features.sh
+```
+
+Or over adb:
+
+```bash
+adb push check-features.sh /data/local/tmp/
+adb shell
+cd /data/local/tmp && chmod +x check-features.sh
+su -c ./check-features.sh
 ```
 
 It reads the kernel's own embedded config plus the live `/proc` and `/sys` state and prints one line per feature:
@@ -61,7 +76,7 @@ It reads the kernel's own embedded config plus the live `/proc` and `/sys` state
 | `NOT BUILT` | that flag was off for this build, so it's not a fault |
 | `N/A` | can't be verified from the device (the line says why) |
 
-Exit code is `0` unless something is `MISSING`. `-v` adds the measured value for each line, `--no-color` gives plain text for pasting into an issue. Plain POSIX `sh` — no bash, no busybox extras, no Termux required.
+Exit code is `0` unless something is `MISSING`. Add `-v` to see the measured value behind each line, or `--no-color` for plain text to paste into an issue — e.g. `su -c "./check-features.sh -v"`. Plain POSIX `sh` — no bash, no busybox extras, no Termux required (Termux is just a convenient root terminal).
 
 ### Root & hiding
 
