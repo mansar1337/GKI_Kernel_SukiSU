@@ -18,7 +18,6 @@
 #include <linux/math64.h>
 #include <linux/proc_fs.h>
 
-#define MAX_ORDER 11
 #define PARA_BUF_LEN 128
 
 /* PORTING DELTA (this project): on 5.15 MAX_ORDER is
