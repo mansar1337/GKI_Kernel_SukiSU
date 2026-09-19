@@ -118,10 +118,17 @@ static void android_vh_binder_proc_transaction_finish_handler(void *unused, stru
 		struct binder_transaction *t, struct task_struct *binder_th_task, bool pending_async,
 		bool sync)
 {
+/* PORTING DELTA (this project): without CONFIG_OPLUS_FEATURE_SCHED_ASSIST
+ * the whole body below compiles out, leaving these locals unused - and the
+ * kernel builds with -Werror=unused-variable. So they live inside the same
+ * IS_ENABLED guard as the code that uses them. Upstream keeps them outside
+ * because OnePlus always builds with sched assist. */
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
 	struct task_struct *caller_task = current;
 	struct task_struct *binder_proc_task = proc->tsk;
 	struct task_struct *grp_leader = NULL;
 	bool set_ux = sync;
+#endif
 
 	if (unlikely(!g_sched_enable))
 		return;
