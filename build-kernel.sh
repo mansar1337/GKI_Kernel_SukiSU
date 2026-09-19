@@ -37,8 +37,12 @@ REPO_ROOT="$(find_repo_dir)" || {
 
 REPO_DIR="$REPO_ROOT/.github/workflows/scripts"
 MATRIX_FILE="$REPO_DIR/../config/matrix.json"
-WORKSPACE="$HOME/gki-workspace"
-LOGFILE="$HOME/build-$(date +%Y%m%d-%H%M%S).log"
+# Build workspace: a gki-workspace/ directory where this script is invoked
+# from (override with GKI_WORKSPACE=/somewhere/else). Keeps the heavy
+# per-version build trees next to the invocation dir instead of a fixed
+# $HOME location, and out of the repo itself.
+WORKSPACE="${GKI_WORKSPACE:-$PWD/gki-workspace}"
+LOGFILE="$PWD/build-$(date +%Y%m%d-%H%M%S).log"
 
 # ---- CLI args ----
 # --ksu-commit <ref>: pin SukiSU-Ultra's kernel-side source to a tag/
@@ -270,28 +274,70 @@ USE_NTSYNC="1"
 #  Dependency check / auto-install
 # ============================================================
 check_dependencies() {
-    # System apt packages - based on the GitHub Actions workflows
-    # (kernel-build.yml / build-kernels.yml) + standard host build tools
-    local apt_packages=(
-        git curl wget zip unzip xz-utils openssl pixz
-        ccache python3 python3-pip
-        build-essential bc bison flex
-        libssl-dev libelf-dev rsync
-    )
-    local missing_apt=()
+    # System packages - based on the GitHub Actions workflows
+    # (kernel-build.yml / build-kernels.yml) + standard host build tools.
+    # Two package managers supported: apt (Debian/Ubuntu/WSL) and pacman
+    # (Arch/CachyOS/EndeavourOS). Anything else: install the equivalents
+    # by hand and the checks below will confirm them.
+    local missing=()
 
-    for pkg in "${apt_packages[@]}"; do
-        dpkg -s "$pkg" &>/dev/null || missing_apt+=("$pkg")
-    done
-
-    if [ ${#missing_apt[@]} -gt 0 ]; then
+    if command -v apt-get &>/dev/null; then
+        local apt_packages=(
+            git curl wget zip unzip xz-utils openssl pixz
+            ccache python3 python3-pip
+            build-essential bc bison flex
+            libssl-dev libelf-dev rsync
+        )
+        for pkg in "${apt_packages[@]}"; do
+            dpkg -s "$pkg" &>/dev/null || missing+=("$pkg")
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+            echo "========================================"
+            echo "  Missing dependencies, installing (apt)..."
+            echo "========================================"
+            echo "  ${missing[*]}"
+            echo ""
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+            echo ""
+        fi
+    elif command -v pacman &>/dev/null; then
+        # Arch naming differs: xz-utils->xz, python3->python,
+        # python3-pip->python-pip, build-essential->base-devel (a group,
+        # handled separately below), libssl-dev->openssl, libelf-dev->libelf.
+        # pixz lives in [extra].
+        local pacman_packages=(
+            git curl wget zip unzip xz openssl pixz
+            ccache python python-pip
+            bc bison flex
+            libelf rsync
+        )
+        for pkg in "${pacman_packages[@]}"; do
+            pacman -Q "$pkg" &>/dev/null || missing+=("$pkg")
+        done
+        # base-devel is a group, not a package - check for its tools instead.
+        if ! command -v gcc &>/dev/null || ! command -v make &>/dev/null; then
+            missing+=(base-devel)
+        fi
+        if [ ${#missing[@]} -gt 0 ]; then
+            echo "========================================"
+            echo "  Missing dependencies, installing (pacman)..."
+            echo "========================================"
+            echo "  ${missing[*]}"
+            echo ""
+            # No full -Syu here on purpose: a system upgrade is the user's
+            # own decision, never a build script's. --needed skips whatever
+            # is already installed (e.g. a present base-devel group).
+            sudo pacman -S --needed --noconfirm "${missing[@]}"
+            echo ""
+        fi
+    else
         echo "========================================"
-        echo "  Missing dependencies, installing..."
+        echo "  No supported package manager found (need apt-get or pacman)."
+        echo "  Install the build dependencies by hand:"
+        echo "  git curl wget zip unzip xz openssl pixz ccache python pip"
+        echo "  gcc make bc bison flex libelf rsync"
         echo "========================================"
-        echo "  ${missing_apt[*]}"
-        echo ""
-        sudo apt-get update
-        sudo apt-get install -y "${missing_apt[@]}"
         echo ""
     fi
 
@@ -302,7 +348,7 @@ check_dependencies() {
         echo ""
     fi
 
-    if [ ${#missing_apt[@]} -eq 0 ]; then
+    if [ ${#missing[@]} -eq 0 ]; then
         echo "All dependencies are present."
         echo ""
     else

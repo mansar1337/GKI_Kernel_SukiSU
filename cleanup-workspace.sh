@@ -4,7 +4,9 @@
 # keeps the shared repos/toolchain for faster future builds.
 
 set -e
-WORKSPACE="$HOME/gki-workspace"
+# Same default as build-kernel.sh: gki-workspace/ under the invocation dir
+# (override with GKI_WORKSPACE=/somewhere/else).
+WORKSPACE="${GKI_WORKSPACE:-$PWD/gki-workspace}"
 
 echo "=== Before cleanup ==="
 du -sh "$WORKSPACE"/* 2>/dev/null
