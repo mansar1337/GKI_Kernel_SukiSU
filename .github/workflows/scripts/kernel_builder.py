@@ -308,6 +308,9 @@ CONFIG_CIFS_XATTR=y
         self._oplus_binder_applied = False
         self._oplus_kswapd_applied = False
         self._oplus_waker_applied = False
+        self._oplus_patch_applied = False
+        self._oplus_zstd_applied = False
+        self._oplus_pcompact_applied = False
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
 
@@ -1597,6 +1600,99 @@ CONFIG_CIFS_XATTR=y
                           ["android_rvh_try_to_wake_up_success"])],
             applied_attr="_oplus_waker_applied",
             applied_detail="WAKER_IDENTIFY vendored (idle until used via /proc/waker_identify/*)")
+
+    def apply_oplus_patch(self):
+        """Vendors OPlus's oplus_patch kprobe framework into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8850,
+        branch oneplus/sm8850_b_16.0.0_oneplus_15,
+        vendor/oplus/kernel/patch/ (vendored under scripts/oplus_patch/;
+        the Kbuild file next to it is an out-of-tree stub and is NOT
+        vendored).
+
+        What it does: register kprobe/kretprobe hooks at runtime, driven
+        through /proc/kprobe_ctl, with a ring log at /proc/kprobe_log.
+        Lets oplusnize kernels trace functions without rebuilding - handy
+        for ColorOS port bringup. Idle until used; the only requirement
+        is CONFIG_KPROBES, which stock GKI already sets (pinned
+        explicitly below so a branch default can never silently drop it).
+
+        KMI-safe by construction: kprobes API only, no in-tree delta, no
+        struct changes.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_patch", title="Adding OPlus kprobe framework (oplus_patch)",
+            enabled=self.config.use_oplus_patch,
+            src_dirname="oplus_patch", sentinel="oplus_patch.c",
+            dst_rel="drivers/oplus_patch",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_patch/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_PATCH) += oplus_patch/",
+            hook_checks=[("kernel/kprobes.c", ["register_kprobe"])],
+            applied_attr="_oplus_patch_applied",
+            applied_detail="OPLUS_PATCH vendored (idle until used via /proc/kprobe_ctl)")
+
+    def apply_oplus_zstd(self):
+        """Vendors OPlus's updated zstd snapshot into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8850,
+        branch oneplus/sm8850_b_16.0.0_oneplus_15,
+        vendor/oplus/kernel/mm/zstd_o/ (vendored under scripts/oplus_zstd/;
+        Facebook dual-licensed sources, Kconfig/Makefile are
+        project-created - upstream builds this tree unconditionally via
+        Bazel, with the include path rooted at its hybridswap location).
+
+        What it does: registers "zstdn_o" with the crypto API ( acomp +
+        scomp) alongside the in-tree "zstd" - selectable e.g. as a zram
+        comp_algorithm. Only adaptation vs upstream: the ccflags include
+        path points at drivers/oplus_zstd/include.
+
+        KMI-safe by construction: self-contained codec, no in-tree delta.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_zstd", title="Adding OPlus updated zstd (zstdn_o)",
+            enabled=self.config.use_oplus_zstd,
+            src_dirname="oplus_zstd", sentinel="crypto_zstd.c",
+            dst_rel="drivers/oplus_zstd",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_zstd/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_CRYPTO_ZSTDN) += oplus_zstd/",
+            hook_checks=[],
+            applied_attr="_oplus_zstd_applied",
+            applied_detail="CRYPTO_ZSTDN (zstdn_o) vendored")
+
+    def apply_oplus_pcompact(self):
+        """Vendors OPlus's proactive_compact module into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8850,
+        branch oneplus/sm8850_b_16.0.0_oneplus_15,
+        vendor/oplus/kernel/mm/proactive_compact/proactive_compact.c
+        (vendored under scripts/oplus_pcompact/; Kconfig/Makefile are
+        project-created - upstream builds this file unconditionally via
+        Bazel, hence OPLUS_FEATURE_PROACTIVE_COMPACT below).
+
+        What it does: procfs-driven proactive memory compaction
+        (/proc/oplus_mem/fragmentation_index, tunable via the
+        compaction_hpage_order / compaction_proactiveness module params).
+        No hooks, no other OPlus dependency.
+
+        KMI-safe by construction: procfs + mm helpers only, no in-tree
+        delta.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_pcompact", title="Adding OPlus proactive_compact",
+            enabled=self.config.use_oplus_pcompact,
+            src_dirname="oplus_pcompact", sentinel="proactive_compact.c",
+            dst_rel="drivers/oplus_pcompact",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_pcompact/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT) += oplus_pcompact/",
+            hook_checks=[],
+            applied_attr="_oplus_pcompact_applied",
+            applied_detail="PROACTIVE_COMPACT vendored (via /proc/oplus_mem/fragmentation_index)")
 
     def add_vendor_module_blacklist(self):
         """Blocks specific vendor-provided .ko modules from ever loading
@@ -2966,6 +3062,32 @@ CONFIG_CIFS_XATTR=y
                 f.write("# === OPlus waker_identify (--oplus-waker) ===\n")
                 f.write("CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY=y\n")
 
+        if self.config.use_oplus_patch and self._oplus_patch_applied:
+            # Built-in (=y), same Image-only rationale. Idle until driven
+            # through /proc/kprobe_ctl. KPROBES pinned explicitly (see
+            # apply_oplus_patch): stock GKI sets it, but a silent branch
+            # default change must never drop the framework's one
+            # requirement unnoticed.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus kprobe framework (--oplus-patch) ===\n")
+                f.write("CONFIG_KPROBES=y\n")
+                f.write("CONFIG_OPLUS_PATCH=y\n")
+
+        if self.config.use_oplus_zstd and self._oplus_zstd_applied:
+            # Built-in (=y): as a crypto API provider it must be present
+            # for zram to select "zstdn_o" - a module would never load
+            # from Image-only artifacts.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus updated zstd zstdn_o (--oplus-zstd) ===\n")
+                f.write("CONFIG_CRYPTO_ZSTDN=y\n")
+
+        if self.config.use_oplus_pcompact and self._oplus_pcompact_applied:
+            # Built-in (=y), same Image-only rationale. Idle until driven
+            # through /proc/oplus_mem/fragmentation_index.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus proactive_compact (--oplus-pcompact) ===\n")
+                f.write("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT=y\n")
+
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
             with open(build_config, "r") as f:
@@ -3869,6 +3991,13 @@ CONFIG_CIFS_XATTR=y
             symbols.append(("CONFIG_OPLUS_FEATURE_KSWAPD_OPT", False))
         if self.config.use_oplus_waker and self._oplus_waker_applied:
             symbols.append(("CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY", False))
+        if self.config.use_oplus_patch and self._oplus_patch_applied:
+            symbols.append(("CONFIG_KPROBES", False))
+            symbols.append(("CONFIG_OPLUS_PATCH", False))
+        if self.config.use_oplus_zstd and self._oplus_zstd_applied:
+            symbols.append(("CONFIG_CRYPTO_ZSTDN", False))
+        if self.config.use_oplus_pcompact and self._oplus_pcompact_applied:
+            symbols.append(("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT", False))
         if self.config.use_zram:
             symbols.append(("CONFIG_ZRAM", False))
             symbols.append(("CONFIG_CRYPTO_LZ4KD", False))
@@ -4440,6 +4569,9 @@ CONFIG_CIFS_XATTR=y
             self.apply_oplus_binder()
             self.apply_oplus_kswapd()
             self.apply_oplus_waker()
+            self.apply_oplus_patch()
+            self.apply_oplus_zstd()
+            self.apply_oplus_pcompact()
             # Before configure_kernel(), like every other feature: it
             # edits Kconfig, and the fragment written below depends on
             # that edit having happened.

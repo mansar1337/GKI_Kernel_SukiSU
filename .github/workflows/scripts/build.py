@@ -86,6 +86,19 @@ def parse_args() -> argparse.Namespace:
                         help="Enable the OPlus waker_identify module - wakeup "
                              "attribution via /proc/waker_identify/*. Observational "
                              "only, idle until used. Hardware-independent, KMI-safe.")
+    parser.add_argument("--oplus-patch", action="store_true",
+                        help="Enable the OPlus kprobe framework - register "
+                             "kprobe/kretprobe hooks at runtime via "
+                             "/proc/kprobe_ctl, log at /proc/kprobe_log. "
+                             "Hardware-independent, needs only CONFIG_KPROBES.")
+    parser.add_argument("--oplus-zstd", action="store_true",
+                        help="Enable the OPlus-updated zstd snapshot as crypto "
+                             "API \"zstdn_o\" (selectable e.g. as zram "
+                             "comp_algorithm). Self-contained codec.")
+    parser.add_argument("--oplus-pcompact", action="store_true",
+                        help="Enable OPlus proactive_compact - procfs-driven "
+                             "memory compaction via "
+                             "/proc/oplus_mem/fragmentation_index.")
     parser.add_argument("--allow-bazel", action="store_true",
                         help="Allow building branches that require Bazel/Kleaf instead of the "
                              "legacy build/build.sh script (android15-6.6+, and some newer "
@@ -181,6 +194,9 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_oplus_binder=args.oplus_binder,
         use_oplus_kswapd=args.oplus_kswapd,
         use_oplus_waker=args.oplus_waker,
+        use_oplus_patch=args.oplus_patch,
+        use_oplus_zstd=args.oplus_zstd,
+        use_oplus_pcompact=args.oplus_pcompact,
         allow_bazel=args.allow_bazel,
         blacklist_modules=args.blacklist_modules,
         use_ath9k=args.ath9k,

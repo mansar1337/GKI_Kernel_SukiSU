@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2023-2030 Oplus. All rights reserved.
+# Vendored from OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8850
+# branch oneplus/sm8850_b_16.0.0_oneplus_15, path vendor/oplus/kernel/patch/Kconfig.
+# Verbatim. Wired into the tree via drivers/{Kconfig,Makefile} by
+# KernelBuilder.apply_oplus_patch().
+
+config OPLUS_PATCH
+    tristate "Oplus Kernel Patch"
+    default n
+    help
+      This option enables support for Oplus Kernel Patch.

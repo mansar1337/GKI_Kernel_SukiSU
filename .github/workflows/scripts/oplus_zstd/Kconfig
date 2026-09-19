@@ -1,0 +1,12 @@
+# Project-created (no upstream Kconfig: on OP15 this tree builds unconditionally
+# via Bazel). Sources are Facebook's zstd, vendored by OPlus; the module
+# registers as "zstdn_o" so it coexists with the in-tree "zstd".
+config CRYPTO_ZSTDN
+	tristate "OPlus updated zstd (zstdn_o, for zram and crypto API users)"
+	depends on CRYPTO
+	select CRYPTO_ALGAPI
+	select CRYPTO_ACOMP2
+	help
+	  Updated Facebook zstd snapshot (as vendored by OPlus on sm8850)
+	  registering as "zstdn_o" alongside the in-tree zstd - selectable
+	  e.g. as a zram comp_algorithm.

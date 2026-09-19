@@ -184,6 +184,14 @@ OPLUS_BINDER="1"
 # modules vendored from OnePlusOSS sm8550. Set to "" to build without.
 OPLUS_KSWAPD="1"
 OPLUS_WAKER="1"
+# OPLUS_PATCH: OPlus kprobe framework (runtime kprobe/kretprobe via
+# /proc/kprobe_ctl). OPLUS_ZSTD: updated zstd as crypto "zstdn_o".
+# OPLUS_PCOMPACT: proactive compaction via
+# /proc/oplus_mem/fragmentation_index. Same HW-independent, KMI-safe
+# vendored-module pattern. Set to "" to build without.
+OPLUS_PATCH="1"
+OPLUS_ZSTD="1"
+OPLUS_PCOMPACT="1"
 
 # EXTRA_NET: optional networking config set - IPv6 NAT (ip6tables nat
 # table + MASQUERADE), nftables with the sub-options that make it
@@ -380,11 +388,12 @@ for key, entries in data.items():
         [ -n "$lts" ] && EXTRA_ARGS+=(--lts)
         [ -n "$DROIDSPACES" ] && EXTRA_ARGS+=(--droidspaces)
         [ -n "$BBG" ] && EXTRA_ARGS+=(--bbg)
-[ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
-[ -n "$OPLUS_KSWAPD" ] && EXTRA_ARGS+=(--oplus-kswapd)
-[ -n "$OPLUS_WAKER" ] && EXTRA_ARGS+=(--oplus-waker)
+        [ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
         [ -n "$OPLUS_KSWAPD" ] && EXTRA_ARGS+=(--oplus-kswapd)
         [ -n "$OPLUS_WAKER" ] && EXTRA_ARGS+=(--oplus-waker)
+        [ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
+        [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
+        [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
         [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
         [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
@@ -472,6 +481,11 @@ EXTRA_ARGS=()
 [ -n "$DROIDSPACES" ] && EXTRA_ARGS+=(--droidspaces)
 [ -n "$BBG" ] && EXTRA_ARGS+=(--bbg)
 [ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
+[ -n "$OPLUS_KSWAPD" ] && EXTRA_ARGS+=(--oplus-kswapd)
+[ -n "$OPLUS_WAKER" ] && EXTRA_ARGS+=(--oplus-waker)
+[ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
+[ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
+[ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
 [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
 [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)

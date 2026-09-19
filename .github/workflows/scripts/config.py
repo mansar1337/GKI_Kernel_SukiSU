@@ -172,6 +172,12 @@ class BuildConfig:
     # default: new/optional, enable explicitly.
     use_oplus_kswapd: bool = False
     use_oplus_waker: bool = False
+    # OPlus kprobe framework + updated zstd + proactive_compact - same
+    # vendored-module pattern, see the matching apply_oplus_* methods.
+    # Off by default, enable explicitly.
+    use_oplus_patch: bool = False
+    use_oplus_zstd: bool = False
+    use_oplus_pcompact: bool = False
     allow_bazel: bool = False
     blacklist_modules: str = ""
     # ath9k_htc за TL-WN722N v1 (AR9271) по OTG. Целият wireless
@@ -287,6 +293,9 @@ class BuildConfig:
             "use_oplus_binder": self.use_oplus_binder,
             "use_oplus_kswapd": self.use_oplus_kswapd,
             "use_oplus_waker": self.use_oplus_waker,
+            "use_oplus_patch": self.use_oplus_patch,
+            "use_oplus_zstd": self.use_oplus_zstd,
+            "use_oplus_pcompact": self.use_oplus_pcompact,
             "allow_bazel": self.allow_bazel,
             "blacklist_modules": self.blacklist_modules,
             "use_ath9k": self.use_ath9k,

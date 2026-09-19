@@ -254,6 +254,10 @@ jobs:
           [ "${{ github.event.inputs.oplus_binder }}" = "true" ] && ARGS="$ARGS --oplus-binder"
           [ "${{ github.event.inputs.oplus_kswapd }}" = "true" ] && ARGS="$ARGS --oplus-kswapd"
           [ "${{ github.event.inputs.oplus_waker }}" = "true" ] && ARGS="$ARGS --oplus-waker"
+          # Always on (no input slots left - workflow_dispatch caps at 25):
+          # kprobe framework, updated zstd, proactive_compact. All
+          # hardware-independent, KMI-safe, idle/off by default at runtime.
+          ARGS="$ARGS --oplus-patch --oplus-zstd --oplus-pcompact"
           [ -n "${{ github.event.inputs.blacklist_modules }}" ] && ARGS="$ARGS --blacklist-modules \"${{ github.event.inputs.blacklist_modules }}\""
           [ "${{ github.event.inputs.DROIDSPACES }}" = "true" ] && ARGS="$ARGS --droidspaces"
           [ "${{ github.event.inputs.enable_ksm }}" = "true" ] && ARGS="$ARGS --ksm"

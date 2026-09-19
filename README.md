@@ -191,6 +191,28 @@ su -c "ls /proc/waker_identify"
 ```
 Active if `CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY=y` is shown and `/proc/waker_identify` exists (write `<pid>;<in_uid>;<for_wakee>` to `/proc/waker_identify/rt_info` to trace, read `/proc/waker_identify/waker_info` for the chain).
 
+**OPlus kprobe framework** *(`--oplus-patch`)* — vendored from OnePlus 15 (`sm8850`, `vendor/oplus/kernel/patch`): register kprobe/kretprobe hooks at runtime via `/proc/kprobe_ctl`, ring log at `/proc/kprobe_log`. Trace functions without rebuilding — useful for port bringup. Idle until used; needs only `CONFIG_KPROBES` (pinned explicitly, on in stock GKI).
+```bash
+su -c "zcat /proc/config.gz | grep -E 'CONFIG_KPROBES=|CONFIG_OPLUS_PATCH='"
+su -c "ls /proc/kprobe_log /proc/kprobe_ctl"
+```
+Active if both symbols are `=y` and both proc entries exist.
+
+**OPlus updated zstd (`zstdn_o`)** *(`--oplus-zstd`)* — Facebook zstd snapshot vendored by OPlus (OnePlus 15), registering as `zstdn_o` alongside the in-tree `zstd` — selectable e.g. as zram algorithm.
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_CRYPTO_ZSTDN"
+su -c "cat /proc/crypto | grep -A1 zstdn_o | head -n 4"
+su -c "cat /sys/block/zram0/comp_algorithm"
+```
+Active if `CONFIG_CRYPTO_ZSTDN=y` and `zstdn_o` appears in `/proc/crypto` (switch zram with `echo zstdn_o > /sys/block/zram0/comp_algorithm`).
+
+**OPlus proactive_compact** *(`--oplus-pcompact`)* — procfs-driven proactive memory compaction (`/proc/oplus_mem/fragmentation_index`, tunable via `compaction_hpage_order` / `compaction_proactiveness` module params).
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT"
+su -c "ls /proc/oplus_mem/fragmentation_index"
+```
+Active if the symbol is `=y` and the proc entry exists.
+
 ### Containers & compatibility
 
 **Droidspaces** — real Linux namespace isolation (PID/IPC/Mount/User) at the kernel level: run a full Linux distro in a genuine container with its own init system (systemd, OpenRC), not just a chroot. Managed via the [Droidspaces app](https://github.com/ravindu644/Droidspaces-OSS). See [Droidspaces details](#droidspaces-details) below.
@@ -405,6 +427,9 @@ Tracked families: `android12-5.10`, `android13-5.15`, `android14-6.1`, `android1
 | `--oplus-binder` | Enable OPlus binder strategy (PRIO_SKIP) | False |
 | `--oplus-kswapd` | Enable OPlus kswapd_opt (alloc tuning + stats) | False |
 | `--oplus-waker` | Enable OPlus waker_identify (wakeup attribution) | False |
+| `--oplus-patch` | Enable OPlus kprobe framework (runtime hooks) | False |
+| `--oplus-zstd` | Enable OPlus updated zstd (zstdn_o crypto) | False |
+| `--oplus-pcompact` | Enable OPlus proactive_compact | False |
 | `--droidspaces` | Enable Droidspaces (android12/13/14 only) | False |
 | `--op8e` | Enable OnePlus 8E support | False |
 | `--bbr-version` | Congestion control: `none`, `bbr1`, or `bbr3` (bbr3 android12/13/14 only) | bbr1 |

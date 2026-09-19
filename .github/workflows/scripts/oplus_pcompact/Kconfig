@@ -1,0 +1,10 @@
+# Project-created (no upstream Kconfig: on OP15 this file builds unconditionally
+# via Bazel - vendor/oplus/kernel/mm/oplus_local_modules.bzl,
+# "oplus_bsp_proactive_compact").
+config OPLUS_FEATURE_PROACTIVE_COMPACT
+	tristate "oplus proactive compaction"
+	default n
+	help
+	  Proactive memory compaction driven through
+	  /proc/oplus_mem/fragmentation_index, with tunable
+	  compaction_hpage_order / compaction_proactiveness module params.
