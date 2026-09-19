@@ -359,6 +359,22 @@ check_dependencies() {
 
 check_dependencies
 
+# ccache dir sanity: a CCACHE_DIR pointing at an unmounted drive (stale
+# mountpoint) or otherwise unwritable location kills EVERY compile with
+# "ccache: error: Failed to create directory ... Permission denied".
+# Fall back to ccache's default (~/.ccache) instead of dying mid-build.
+if [ -n "$CCACHE_DIR" ]; then
+    if ! mkdir -p "$CCACHE_DIR" 2>/dev/null || [ ! -w "$CCACHE_DIR" ]; then
+        echo "========================================"
+        echo "  WARNING: CCACHE_DIR=$CCACHE_DIR is not writable"
+        echo "  (unmounted drive? wrong owner?). Falling back to ~/.ccache."
+        echo "  Fix the export in ~/.bashrc to silence this."
+        echo "========================================"
+        echo ""
+        unset CCACHE_DIR
+    fi
+fi
+
 # ============================================================
 #  Build menu
 # ============================================================
