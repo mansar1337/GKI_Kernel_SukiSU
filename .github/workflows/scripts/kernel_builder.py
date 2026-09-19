@@ -3016,6 +3016,13 @@ CONFIG_CIFS_XATTR=y
         safe_custom_version = ""
         if self.config.custom_version:
             safe_custom_version = self.config.custom_version.rstrip('-')[:MAX_CUSTOM_LEN]
+        # OPlus builds carry the -@oplusnize marker in the kernel name so an
+        # oplusnize Image is identifiable on-device (uname -r) at a glance.
+        # Appended to an explicit --custom-version if one was given, never
+        # duplicated.
+        if (self.config.use_oplus_binder or self.config.use_oplus_kswapd
+                or self.config.use_oplus_waker) and "@oplusnize" not in safe_custom_version:
+            safe_custom_version = (safe_custom_version + "-@oplusnize")[:MAX_CUSTOM_LEN]
 
         setlocalversion = self.work_dir / "common/scripts/setlocalversion"
         if setlocalversion.exists():
@@ -3082,12 +3089,12 @@ CONFIG_CIFS_XATTR=y
                 with open(stamp_bzl, "w") as f:
                     f.write(content)
 
-            if self.config.custom_version:
+            if safe_custom_version:
                 config_file = self.work_dir / "common/arch/arm64/configs/gki_defconfig"
                 if config_file.exists():
                     with open(config_file, "r") as f:
                         content = f.read()
-                    content = re.sub(r'^CONFIG_LOCALVERSION=".*"$', f'CONFIG_LOCALVERSION="{self.config.custom_version}"', content, flags=re.MULTILINE)
+                    content = re.sub(r'^CONFIG_LOCALVERSION=".*"$', f'CONFIG_LOCALVERSION="{safe_custom_version}"', content, flags=re.MULTILINE)
                     with open(config_file, "w") as f:
                         f.write(content)
                 else:
