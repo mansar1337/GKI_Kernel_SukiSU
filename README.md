@@ -226,7 +226,7 @@ Active if it shows `CONFIG_ATH9K_HTC=m`. Full end-to-end check (adapter plugged 
 Handles dependency installation automatically — no manual setup, even on a clean Ubuntu/WSL install.
 
 ```bash
-git clone https://github.com/nikakvo/GKI_Kernel_SukiSU
+git clone https://github.com/mansar1337/GKI_Kernel_SukiSU
 cd GKI_Kernel_SukiSU
 chmod +x build-kernel.sh cleanup-workspace.sh
 ./build-kernel.sh

@@ -66,7 +66,7 @@ class ReleaseGenerator:
 > **How do I check a feature is actually active on my device?**
 > Every feature above has a step-by-step verification command (what to run over
 > `adb`/a root shell and exactly what output means it's on) in the
-> **[Features & verification](https://github.com/nikakvo/GKI_Kernel_SukiSU#features--verification)**
+> **[Features & verification](https://github.com/mansar1337/GKI_Kernel_SukiSU#features--verification)**
 > section of the README. Kept there instead of duplicated in every release so
 > there's a single, always-current source of truth.
 """

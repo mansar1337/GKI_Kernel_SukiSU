@@ -223,7 +223,7 @@ ATH9K="1"
 KSU_VERSION_CODE="${KSU_VERSION_CODE:-}"
 # Set to "1" to permanently patch out KernelSU/SukiSU volume-key safe-mode
 # detection. Defaults OFF: SukiSU-Ultra fixed the safe-mode bug upstream
-# (see the "Safe Mode Disabled" fix in nikakvo/GKI_KernelSU_SUSFS actions
+# (see the "Safe Mode Disabled" fix in mansar1337/GKI_Kernel_SukiSU actions
 # history), so this patch is no longer needed for most people - only turn
 # it on if you specifically want safe-mode detection permanently disabled
 # regardless of what upstream does. Most people should rely on
