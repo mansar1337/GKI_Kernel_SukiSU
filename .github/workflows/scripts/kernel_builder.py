@@ -680,13 +680,45 @@ CONFIG_CIFS_XATTR=y
             self._run_cmd(f"openssl genrsa -out {key_path} 2048", check=False)
         return key_path
 
+    def _is_valid_repo_tool(self, repo_path: Path) -> bool:
+        """A truncated `repo` download (e.g. curl error 56 mid-transfer)
+        leaves a file that exists but is not valid Python - and the old
+        code only downloaded when the file was missing, so every later
+        re-run kept failing on the same corrupt tool instead of
+        re-fetching it. Size + py_compile gates both the fresh download
+        and the cached copy."""
+        try:
+            if not repo_path.exists() or repo_path.stat().st_size < 1024:
+                return False
+            import py_compile as _py_compile
+            _py_compile.compile(str(repo_path), doraise=True)
+            return True
+        except Exception:
+            return False
+
     def setup_repo_tool(self):
         logger.info("=== Installing repo tool ===")
         repo_dir = self.workspace / "git-repo"
         repo_dir.mkdir(exist_ok=True)
         repo_path = repo_dir / "repo"
+        if repo_path.exists() and not self._is_valid_repo_tool(repo_path):
+            logger.warning(f"Cached repo tool at {repo_path} is corrupt "
+                           f"(truncated download?) - re-fetching")
+            repo_path.unlink()
         if not repo_path.exists():
-            self._run_cmd(f"curl https://storage.googleapis.com/git-repo-downloads/repo > {repo_path}", check=False)
+            # --retry-all-errors: a flaky TLS read (curl 56, like the one
+            # that produced a truncated repo tool on a CachyOS local build)
+            # must be retried, not saved as a corrupt file. --fail keeps
+            # HTTP errors from writing an error page over the tool.
+            self._run_cmd(f"curl --fail --retry 5 --retry-all-errors --retry-delay 3 "
+                          f"-L https://storage.googleapis.com/git-repo-downloads/repo "
+                          f"-o {repo_path}", check=False)
+            if not self._is_valid_repo_tool(repo_path):
+                raise RuntimeError(
+                    f"Could not download a valid repo tool after retries - "
+                    f"check network access to storage.googleapis.com. "
+                    f"Delete {repo_path} and re-run to retry."
+                )
             self._run_cmd(f"chmod a+rx {repo_path}", check=False)
         self.env["REPO"] = str(repo_path)
         self.shell.env = self.env
