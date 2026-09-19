@@ -778,10 +778,23 @@ CONFIG_CIFS_XATTR=y
                 f.write(content)
 
         self.env["REMOTE_BRANCH"] = remote
+        # A previous run interrupted mid-checkout (Ctrl+C during sync)
+        # leaves common/ with a mix of two revisions on disk. repo sync
+        # then refuses to check out ("local changes would be overwritten")
+        # and every later step builds on the corrupted mix - including
+        # patches that report "previously applied" on a tree that was
+        # never patched. Reset first so a re-run always resumes from a
+        # pristine tree. No-op on a clean checkout.
+        common_dir = self.work_dir / "common"
+        if (common_dir / ".git").exists():
+            logger.info("Resetting existing common/ tree to pristine state before sync...")
+            self._chdir(common_dir)
+            self._run_cmd("git reset --hard -q HEAD", check=False)
+            self._run_cmd("git clean -fdq", check=False)
+            self._chdir(self.work_dir)
         logger.info("Syncing kernel source...")
         self._run_cmd("$REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast", check=False)
 
-        common_dir = self.work_dir / "common"
         if not common_dir.exists():
             raise RuntimeError("repo sync failed, common directory does not exist")
         self._apply_legacy_fixes(remote)
