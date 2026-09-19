@@ -8,6 +8,14 @@
 obj-$(CONFIG_CRYPTO_ZSTDN) += crypto_zstdn_o.o
 
 ccflags-y  += -I$(srctree)/drivers/oplus_zstd/include
+# PORTING ADDITION (this project): the helper objects below (xxhash,
+# entropy_common, fse_decompress, ...) define globals that also exist in
+# the in-tree lib/xxhash.o and lib/zstd/*.o. Built-in (=y) that is a
+# fatal duplicate-symbol at vmlinux link; as a module (=m, like upstream
+# OP15's own DDK build) it would instead fail at insmod against the
+# in-tree lib/xxhash exports. -fvisibility=hidden keeps every helper
+# module-local so neither link nor load can collide.
+ccflags-y  += -fvisibility=hidden
 crypto_zstdn_o-y := \
 		crypto_zstd.o \
 		zstd_compress_module.o \

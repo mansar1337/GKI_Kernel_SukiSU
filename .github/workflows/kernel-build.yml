@@ -290,6 +290,7 @@ jobs:
           mkdir -p artifacts
           find /tmp/gki-build -name "*AnyKernel3*.zip" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "*-boot.img" -type f -exec cp {} artifacts/ \;
+          find /tmp/gki-build -name "crypto_zstdn_o.ko" -type f -exec cp {} artifacts/ \;
 
       - name: Patch status summary
         run: |

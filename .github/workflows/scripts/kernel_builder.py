@@ -3022,6 +3022,52 @@ CONFIG_CIFS_XATTR=y
             )
         return False
 
+    OPLUS_MODULES = ("crypto_zstdn_o.ko",)
+
+    def collect_oplus_modules(self) -> list:
+        """Stages the loadable oplus .ko files (currently just zstdn_o -
+        everything else oplus is built-in) next to the other artifacts.
+
+        Same loud-missing pattern as collect_ath9k_modules: a requested
+        module that never got built fails here, not as a mysterious
+        absent file downstream. No CRC verification: unlike ath9k these
+        link against the core kernel, not a vendor stack, and
+        -fvisibility=hidden keeps their vendored helpers module-local.
+        """
+        if not self.config.use_oplus_zstd or not self._oplus_zstd_applied:
+            return []
+        logger.info("=== oplus: collecting modules ===")
+        out_dir = self.work_dir / "out"
+        if not out_dir.exists():
+            raise RuntimeError("oplus modules: out/ does not exist - nothing was built")
+
+        def _pick(name: str):
+            cands = list(out_dir.rglob(name))
+            cands.sort(key=lambda p: (0 if "staging" in p.parts else 1, len(p.parts)))
+            return cands[0] if cands else None
+
+        dest = self.work_dir / "oplus-modules"
+        dest.mkdir(exist_ok=True)
+        artifacts = []
+        missing = []
+        for name in self.OPLUS_MODULES:
+            hit = _pick(name)
+            if not hit:
+                missing.append(name)
+                continue
+            target = dest / name
+            self._run_cmd(f"cp {hit} {target}", check=False)
+            logger.info(f"  {name}  <- {hit}")
+            artifacts.append(str(target))
+        if missing:
+            self._mark("oplus_modules", "failed", f"not built: {', '.join(missing)}")
+            raise RuntimeError(
+                f"oplus modules: requested but never built: {', '.join(missing)}. "
+                f"Check whether Kconfig kept CONFIG_CRYPTO_ZSTDN=m in the built .config."
+            )
+        self._mark("oplus_modules", "applied", f"{len(artifacts)} module(s) staged")
+        return artifacts
+
     def configure_kernel(self):
         logger.info("=== Configuring kernel ===")
         self._chdir(self.work_dir)
@@ -3155,12 +3201,16 @@ CONFIG_CIFS_XATTR=y
                 f.write("CONFIG_OPLUS_PATCH=y\n")
 
         if self.config.use_oplus_zstd and self._oplus_zstd_applied:
-            # Built-in (=y): as a crypto API provider it must be present
-            # for zram to select "zstdn_o" - a module would never load
-            # from Image-only artifacts.
+            # Module (=m), NOT built-in: the helper objects carry globals
+            # (xxhash, FSE/HUF) that duplicate in-tree lib/xxhash.o and
+            # lib/zstd/*.o - =y dies at vmlinux link. Upstream OP15 builds
+            # this exact tree as a DDK .ko for the same reason. Load with
+            # insmod (see README); -fvisibility=hidden in the module
+            # Makefile keeps helpers module-local so insmod can't collide
+            # with the in-tree lib/xxhash exports either.
             with open(config_file, "a") as f:
                 f.write("# === OPlus updated zstd zstdn_o (--oplus-zstd) ===\n")
-                f.write("CONFIG_CRYPTO_ZSTDN=y\n")
+                f.write("CONFIG_CRYPTO_ZSTDN=m\n")
 
         if self.config.use_oplus_pcompact and self._oplus_pcompact_applied:
             # Built-in (=y), same Image-only rationale. Idle until driven
@@ -4669,6 +4719,7 @@ CONFIG_CIFS_XATTR=y
             self._verify_effective_config()
             self._verify_image_ikconfig()
             ath9k_artifacts = self.collect_ath9k_modules()
+            oplus_artifacts = self.collect_oplus_modules()
 
             # Rewritten now that the build is done: the earlier call
             # happens before compilation (so a hard patch failure still
@@ -4681,6 +4732,7 @@ CONFIG_CIFS_XATTR=y
             self.patch_kpm_image()
             artifacts = []
             artifacts.extend(ath9k_artifacts)
+            artifacts.extend(oplus_artifacts)
             artifacts.extend(self.prepare_boot_images())
             artifacts.extend(self.create_anykernel_zips())
 

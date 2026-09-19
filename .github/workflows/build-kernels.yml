@@ -300,6 +300,7 @@ jobs:
           mkdir -p artifacts
           find /tmp/gki-build -name "*AnyKernel3*.zip" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "*-boot.img" -type f -exec cp {} artifacts/ \;
+          find /tmp/gki-build -name "crypto_zstdn_o.ko" -type f -exec cp {} artifacts/ \;
           if [ -z "$(ls -A artifacts/)" ]; then
             echo "No build artifacts found"
             echo "artifacts_exist=false" >> $GITHUB_OUTPUT

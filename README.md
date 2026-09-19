@@ -198,13 +198,13 @@ su -c "ls /proc/kprobe_log /proc/kprobe_ctl"
 ```
 Active if both symbols are `=y` and both proc entries exist.
 
-**OPlus updated zstd (`zstdn_o`)** *(`--oplus-zstd`)* — Facebook zstd snapshot vendored by OPlus (OnePlus 15), registering as `zstdn_o` alongside the in-tree `zstd` — selectable e.g. as zram algorithm.
+**OPlus updated zstd (`zstdn_o`)** *(`--oplus-zstd`)* — Facebook zstd snapshot vendored by OPlus (OnePlus 15), registering as `zstdn_o` alongside the in-tree `zstd` — selectable e.g. as zram algorithm. Ships as a **loadable module** (`crypto_zstdn_o.ko`, attached to releases next to the boot image): built-in is impossible, its helpers would duplicate `lib/xxhash`/`lib/zstd` at link time (upstream builds it as a DDK module for the same reason).
 ```bash
-su -c "zcat /proc/config.gz | grep CONFIG_CRYPTO_ZSTDN"
+su -c "insmod /path/to/crypto_zstdn_o.ko"
 su -c "cat /proc/crypto | grep -A1 zstdn_o | head -n 4"
-su -c "cat /sys/block/zram0/comp_algorithm"
+su -c "echo zstdn_o > /sys/block/zram0/comp_algorithm"
 ```
-Active if `CONFIG_CRYPTO_ZSTDN=y` and `zstdn_o` appears in `/proc/crypto` (switch zram with `echo zstdn_o > /sys/block/zram0/comp_algorithm`).
+Active if `zstdn_o` appears in `/proc/crypto` after insmod (to persist across reboots, load it from a boot script / root module; zram keeps the previously-set algorithm only while the device is up).
 
 **OPlus proactive_compact** *(`--oplus-pcompact`)* — procfs-driven proactive memory compaction (`/proc/oplus_mem/fragmentation_index`, tunable via `compaction_hpage_order` / `compaction_proactiveness` module params).
 ```bash
