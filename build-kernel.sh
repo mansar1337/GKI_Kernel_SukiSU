@@ -167,11 +167,12 @@ DROIDSPACES="1"
 # Congestion control: "none", "bbr1", or "bbr3" (android12/13/14/15
 # so far - see README's "BBRv3" note).
 BBR_VERSION="bbr3"
-# LTO mode: "thin" (default, faster/lower-RAM) or "full" (slower,
-# single-threaded, RAM-heavy link step, marginally better
-# perf/code-size). Only applies to android12/android13 (legacy
-# build.sh path) - ignored on Bazel branches.
-LTO_MODE="full"
+# LTO mode: "thin" (default, faster/lower-RAM, parallel link) or "full"
+# (slower, single-threaded, RAM-heavy link step, marginally better
+# perf/code-size - use for the final release build only). Only applies
+# to android12/android13 (legacy build.sh path) - ignored on
+# Bazel branches.
+LTO_MODE="thin"
 # Set to "1" to enable Baseband-guard (blocks unauthorized writes to
 # baseband/modem and other protected partitions at the LSM level).
 BBG="1"
@@ -378,6 +379,21 @@ if [ -n "$CCACHE_DIR" ]; then
         echo ""
         unset CCACHE_DIR
     fi
+fi
+
+# Local ccache tuning: kernel objects with debug info blow straight past
+# ccache's 5G default, which silently re-cold-starts the cache and forces
+# full recompiles. 20G + compression keeps repeat identical builds hot,
+# so a component is compiled once and reused on every later run.
+if command -v ccache &>/dev/null; then
+    : "${CCACHE_DIR:=$HOME/.ccache}"
+    export CCACHE_DIR
+    mkdir -p "$CCACHE_DIR" 2>/dev/null
+    ccache --max-size=20G >/dev/null 2>&1
+    ccache --set-config=compression=true >/dev/null 2>&1
+    echo "ccache dir: $CCACHE_DIR"
+    ccache -s 2>/dev/null | grep -iE "cache size|hit rate" | head -n 4
+    echo ""
 fi
 
 # ============================================================
