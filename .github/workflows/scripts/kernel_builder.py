@@ -360,6 +360,37 @@ CONFIG_CIFS_XATTR=y
         os.chdir(path)
         self.shell.cwd = str(path)
 
+    def _git_with_retry(self, cmd: str, what: str, tries: int = 3, delay: int = 15):
+        """Run a git clone/fetch, retrying transient network failures.
+
+        Connections to github/googlesource regularly stall mid-transfer
+        from some networks (seen in the wild: curl-56 on the repo tool,
+        a 133s github timeout on a SUSFS fetch). Permanent failures
+        (unknown ref/repo) are NOT retried - detected from stderr, the
+        failed result is returned immediately for the caller to report.
+        Output is captured (not streamed) so failures can be classified;
+        the tail is logged with the final result either way.
+        """
+        result = None
+        for attempt in range(1, tries + 1):
+            result = self._run_cmd(cmd, check=False, capture_output=True)
+            if result.returncode == 0:
+                return result
+            out = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
+            if ("couldn't find remote ref" in out
+                    or "couldn't find remote branch" in out
+                    or "repository not found" in out):
+                return result
+            if attempt < tries:
+                tail = (result.stderr or result.stdout or "").strip().splitlines()[-3:]
+                logger.warning(
+                    f"{what}: attempt {attempt}/{tries} failed "
+                    f"({'; '.join(tail) if tail else 'no output'}) - "
+                    f"retrying in {delay}s")
+                import time as _time
+                _time.sleep(delay)
+        return result
+
     def _resolve_susfs_pin(self) -> Optional[str]:
         """Picks which susfs4ksu ref to pin for THIS build's branch.
 
@@ -558,7 +589,7 @@ CONFIG_CIFS_XATTR=y
                 if branch:
                     cmd += f" -b {branch}"
                 logger.info(f"Cloning {name}...")
-                result = self._run_cmd(cmd, check=False)
+                result = self._git_with_retry(cmd, f"{name} clone")
                 if name == "SUSFS" and result.returncode != 0:
                     retry = _clone_susfs_with_fallback(url, branch, result.returncode)
                     if retry is not None and retry.returncode == 0:
@@ -591,7 +622,7 @@ CONFIG_CIFS_XATTR=y
                     # resolved commit below either way so the build record
                     # says exactly what went in.
                     self._chdir(repo_dir)
-                    self._run_cmd("git fetch origin", check=False)
+                    self._git_with_retry("git fetch origin", f"{name} refresh")
                     self._run_cmd("git reset --hard @{u}", check=False)
                     self._chdir(self.workspace)
                 if branch:
@@ -603,19 +634,24 @@ CONFIG_CIFS_XATTR=y
                     # the right one before continuing, instead of silently
                     # using whatever happens to be checked out.
                     self._chdir(repo_dir)
-                    fetch_result = self._run_cmd(f"git fetch origin {branch}", check=False)
+                    fetch_result = self._git_with_retry(f"git fetch origin {branch}",
+                                                        f"{name} branch fetch")
                     self._run_cmd(f"git checkout {branch}", check=False)
                     self._run_cmd(f"git reset --hard origin/{branch}", check=False)
                     self._chdir(self.workspace)
                     if name == "SUSFS" and fetch_result.returncode != 0:
                         raise RuntimeError(
                             f"Failed to fetch SUSFS branch '{branch}' from {url} "
-                            f"(git fetch exit code {fetch_result.returncode}).\n"
-                            f"This branch may not exist yet on this fork - susfs4ksu "
-                            f"forks can lag behind upstream for newer Android/kernel "
-                            f"combos (e.g. ShirkNeko's fork didn't have "
-                            f"gki-android16-6.12 for a while after it existed "
-                            f"upstream). Check: {url.replace('.git', '')}/branches\n"
+                            f"(git fetch exit code {fetch_result.returncode}, "
+                            f"after retries).\n"
+                            f"Either this branch does not exist yet on this fork "
+                            f"- susfs4ksu forks can lag behind upstream for newer "
+                            f"Android/kernel combos (e.g. ShirkNeko's fork didn't "
+                            f"have gki-android16-6.12 for a while after it existed "
+                            f"upstream; check: {url.replace('.git', '')}/branches) - "
+                            f"or the network to github keeps failing, in which "
+                            f"case just re-run the build (workspace repos are "
+                            f"reused, nothing already fetched is lost).\n"
                             f"Failing here instead of continuing into a long kernel "
                             f"repo sync that would fail later anyway."
                         )
