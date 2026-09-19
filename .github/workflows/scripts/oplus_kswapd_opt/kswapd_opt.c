@@ -8,7 +8,7 @@
  * Vendored from OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550
  * branch oneplus/sm8550_v_15.0.0_oneplus11, path vendor/oplus/kernel/mm/kswapd_opt/.
  * Verbatim. Self-contained vendor-hook module (alloc_flags/kvmalloc/slowpath/
- * kswapd stats via /proc/oplus_mem/*, all off by default) - no sched-assist
+ * kswapd stats under proc oplus_mem, all off by default) - no sched-assist
  * dependency, no in-tree delta required.
  */
 

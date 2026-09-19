@@ -4,8 +4,8 @@
  *
  * Vendored from OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550
  * branch oneplus/sm8550_v_15.0.0_oneplus11, path vendor/oplus/kernel/cpu/waker_identify/.
- * Verbatim. Wakeup-attribution via android_rvh_try_to_wake_up_success + /proc/
- * waker_identify/* - no sched-assist dependency, no in-tree delta required.
+ * Verbatim. Wakeup-attribution via android_rvh_try_to_wake_up_success plus proc
+ * waker_identify entries - no sched-assist dependency, no in-tree delta required.
  */
 #include <linux/sched.h>
 #include <linux/sched/cputime.h>
