@@ -21,6 +21,16 @@
 #define MAX_ORDER 11
 #define PARA_BUF_LEN 128
 
+/* PORTING DELTA (this project): on 5.15 MAX_ORDER is
+ * CONFIG_FORCE_MAX_ZONEORDER from mmzone.h (included above), not a
+ * literal - an unconditional redefine trips -Werror=macro-redefined.
+ * Prefer the canonical value (11 on GKI arm64, identical behavior for
+ * the loop bound below); keep upstream's literal only where mmzone
+ * doesn't define it at all. */
+#ifndef MAX_ORDER
+#define MAX_ORDER 11
+#endif
+
 /* Page order with-respect-to which proactive compaction calculates external fragmentation. */
 static unsigned int g_compaction_hpage_order = 4;
 static unsigned int g_compaction_proactiveness = 20;
