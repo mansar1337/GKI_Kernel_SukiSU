@@ -168,6 +168,13 @@ su -c "zcat /proc/config.gz | grep -E 'CONFIG_LTO_CLANG_(FULL|THIN)'"
 ```
 Active if it shows `CONFIG_LTO_CLANG_FULL=y` (release) or `CONFIG_LTO_CLANG_THIN=y` (CI).
 
+**OPlus kswapd_opt** *(`--oplus-kswapd`)* — vendored vendor-hook module from OnePlusOSS `sm8550` V (`vendor/oplus/kernel/mm/kswapd_opt`): high-order allocation flag adjustment (skip kswapd reclaim where low-order fallback works) plus per-order alloc-slowpath/kswapd-load statistics. Everything sits behind static keys toggled via `/proc/oplus_mem/*` and is **off by default** — an enabled-but-untouched build behaves like stock. Hardware-independent, KMI-safe (hooks only).
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_OPLUS_FEATURE_KSWAPD_OPT"
+su -c "ls /proc/oplus_mem"
+```
+Active if `CONFIG_OPLUS_FEATURE_KSWAPD_OPT=y` is shown and `/proc/oplus_mem` exists (try `echo 1 > /proc/oplus_mem/kswapd_debug` to start order statistics, `cat /proc/oplus_mem/kswapd_debug` to read them).
+
 ### IPC
 
 **OPlus binder strategy (PRIO_SKIP)** *(`--oplus-binder`)* — vendored vendor-hook module from OnePlusOSS `sm8550` (`vendor/oplus/kernel/ipc`): an RT binder thread is no longer demoted to CFS priority for the duration of a binder transaction, plus a 5.15 `saved_priority` restore fix. Hardware-independent and KMI-safe (consumes existing Google vendor hooks only — no `binder.c` delta, no struct changes, no new exported symbols; OnePlus's own `binder.c` carries zero oplus modifications). Sched-assist-coupled hunks compile out automatically when sched assist is absent. `TRANS_CTRL` deliberately excluded (OnePlus's own GKI config leaves it off).
@@ -176,6 +183,13 @@ su -c "zcat /proc/config.gz | grep CONFIG_OPLUS_BINDER"
 su -c "ls /sys/module/oplus_binder_strategy"
 ```
 Active if both `CONFIG_OPLUS_BINDER_STRATEGY=y` and `CONFIG_OPLUS_BINDER_PRIO_SKIP=y` are shown and the sysfs entry exists (toggle at runtime via `/sys/module/oplus_binder_strategy/parameters/binder_sched_enable`).
+
+**OPlus waker_identify** *(`--oplus-waker`)* — vendored vendor-hook module from OnePlusOSS `sm8550` V (`vendor/oplus/kernel/cpu/waker_identify`): attributes wakeups to wakers through `android_rvh_try_to_wake_up_success` and reports wake chains for a traced pid. Purely observational — idle until driven through procfs, zero behavior change otherwise. Hardware-independent, KMI-safe.
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY"
+su -c "ls /proc/waker_identify"
+```
+Active if `CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY=y` is shown and `/proc/waker_identify` exists (write `<pid>;<in_uid>;<for_wakee>` to `/proc/waker_identify/rt_info` to trace, read `/proc/waker_identify/waker_info` for the chain).
 
 ### Containers & compatibility
 
@@ -389,6 +403,8 @@ Tracked families: `android12-5.10`, `android13-5.15`, `android14-6.1`, `android1
 | `--no-kpm` | Disable KPM | False |
 | `--bbg` | Enable Baseband-guard | False |
 | `--oplus-binder` | Enable OPlus binder strategy (PRIO_SKIP) | False |
+| `--oplus-kswapd` | Enable OPlus kswapd_opt (alloc tuning + stats) | False |
+| `--oplus-waker` | Enable OPlus waker_identify (wakeup attribution) | False |
 | `--droidspaces` | Enable Droidspaces (android12/13/14 only) | False |
 | `--op8e` | Enable OnePlus 8E support | False |
 | `--bbr-version` | Congestion control: `none`, `bbr1`, or `bbr3` (bbr3 android12/13/14 only) | bbr1 |

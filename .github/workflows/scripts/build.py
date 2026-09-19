@@ -77,6 +77,15 @@ def parse_args() -> argparse.Namespace:
                              "binder thread from being demoted to CFS priority during a "
                              "transaction, plus a 5.15 saved_priority fix. Hardware- "
                              "independent, KMI-safe (hooks only, no struct changes).")
+    parser.add_argument("--oplus-kswapd", action="store_true",
+                        help="Enable the OPlus kswapd_opt module - high-order alloc "
+                             "flag tuning plus per-order alloc/kswapd statistics via "
+                             "/proc/oplus_mem/* (all off by default). Hardware- "
+                             "independent, KMI-safe (hooks only).")
+    parser.add_argument("--oplus-waker", action="store_true",
+                        help="Enable the OPlus waker_identify module - wakeup "
+                             "attribution via /proc/waker_identify/*. Observational "
+                             "only, idle until used. Hardware-independent, KMI-safe.")
     parser.add_argument("--allow-bazel", action="store_true",
                         help="Allow building branches that require Bazel/Kleaf instead of the "
                              "legacy build/build.sh script (android15-6.6+, and some newer "
@@ -170,6 +179,8 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_hide_stuff=not args.no_hide_stuff,
         use_bbg=args.bbg,
         use_oplus_binder=args.oplus_binder,
+        use_oplus_kswapd=args.oplus_kswapd,
+        use_oplus_waker=args.oplus_waker,
         allow_bazel=args.allow_bazel,
         blacklist_modules=args.blacklist_modules,
         use_ath9k=args.ath9k,

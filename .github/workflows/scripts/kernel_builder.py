@@ -306,6 +306,8 @@ CONFIG_CIFS_XATTR=y
         self.patch_status: dict = {}
         self._bbrv3_applied = False
         self._oplus_binder_applied = False
+        self._oplus_kswapd_applied = False
+        self._oplus_waker_applied = False
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
 
@@ -1419,8 +1421,67 @@ CONFIG_CIFS_XATTR=y
                 f.write(content)
         self._mark("baseband_guard", "applied")
 
-    def _oplus_binder_dir(self) -> Path:
-        return Path(__file__).parent / "oplus_binder"
+    def _apply_vendored_oplus_module(self, key, title, enabled, src_dirname,
+                                     sentinel, dst_rel, kconfig_rel,
+                                     kconfig_source, makefile_rel, make_obj,
+                                     hook_checks, applied_attr, applied_detail):
+        """Shared machinery for the apply_oplus_* family: copies a vendored
+        OPlus vendor-hook module from scripts/<src_dirname>/ into the tree
+        and wires its Kconfig/Makefile lines (idempotent re-runs).
+
+        hook_checks is a list of (tree-relative path, [names]) - every name
+        must occur in that file. This is the fail-fast that matters: the
+        module would otherwise compile AND load but never fire, since
+        DECLARE_HOOK generates the register function even with zero call
+        sites. May also point at a .c file to assert a mainline tracepoint
+        the module consumes still exists there.
+
+        Returns True iff applied (and sets the applied_attr flag the
+        defconfig step gates on); every outcome is _mark()ed.
+        """
+        if not enabled:
+            self._mark(key, "skipped", "not requested")
+            return False
+        logger.info(f"=== {title} ===")
+        common_dir = self.work_dir / "common"
+        if not common_dir.exists():
+            self._mark(key, "failed", "common/ missing")
+            return False
+        src = Path(__file__).parent / src_dirname
+        if not (src / sentinel).exists():
+            self._mark(key, "failed", f"vendored source missing at {src}")
+            return False
+        for rel, names in hook_checks:
+            p = common_dir / rel
+            text = p.read_text() if p.exists() else ""
+            missing = [n for n in names if n not in text]
+            if missing:
+                self._mark(key, "failed", f"{rel} lacks {', '.join(missing)}")
+                return False
+        dst = common_dir / dst_rel
+        self._run_cmd(f"rm -rf {dst} && mkdir -p {dst} && cp -r {src}/. {dst}/", check=False)
+        if not (dst / sentinel).exists():
+            self._mark(key, "failed", "copy into tree failed")
+            return False
+        kconfig = common_dir / kconfig_rel
+        if kconfig.exists():
+            content = kconfig.read_text()
+            if kconfig_source not in content:
+                with open(kconfig, "a") as f:
+                    f.write(kconfig_source + "\n")
+        else:
+            logger.warning(f"{kconfig_rel} not found - {src_dirname} Kconfig not wired")
+        makefile = common_dir / makefile_rel
+        if makefile.exists():
+            content = makefile.read_text()
+            if make_obj not in content:
+                with open(makefile, "a") as f:
+                    f.write(make_obj + "\n")
+        else:
+            logger.warning(f"{makefile_rel} not found - {src_dirname} obj- not wired")
+        setattr(self, applied_attr, True)
+        self._mark(key, "applied", applied_detail)
+        return True
 
     def apply_oplus_binder(self):
         """Vendors OPlus's binder strategy module into the tree.
@@ -1446,57 +1507,96 @@ CONFIG_CIFS_XATTR=y
         no binder.c delta (OnePlus's own binder.c carries zero oplus changes),
         no struct layout changes, no new exported symbols.
         """
-        if not self.config.use_oplus_binder:
-            self._mark("oplus_binder", "skipped", "not requested")
-            return
-        logger.info("=== Adding OPlus binder strategy (PRIO_SKIP) ===")
-        common_dir = self.work_dir / "common"
-        if not common_dir.exists():
-            self._mark("oplus_binder", "failed", "common/ missing")
-            return
-        src = self._oplus_binder_dir()
-        if not (src / "binder_sched.c").exists():
-            self._mark("oplus_binder", "failed", f"vendored source missing at {src}")
-            return
-        # Fail fast if this branch lacks the hooks the module consumes.
-        # (Present on every GKI branch checked so far - android13-5.15
-        # verified; the module would otherwise compile AND load but never
-        # fire, since DECLARE_HOOK generates the register function even
-        # with zero call sites.)
-        hooks_header = common_dir / "include/trace/hooks/binder.h"
-        hooks_ok = False
-        if hooks_header.exists():
-            hooks_text = hooks_header.read_text()
-            hooks_ok = ("android_vh_binder_priority_skip" in hooks_text
-                        and "android_vh_binder_restore_priority" in hooks_text)
-        if not hooks_ok:
-            self._mark("oplus_binder", "failed",
-                        "binder vendor hooks missing in include/trace/hooks/binder.h")
-            return
-        dst = common_dir / "drivers/android/oplus_binder"
-        self._run_cmd(f"rm -rf {dst} && mkdir -p {dst} && cp -r {src}/. {dst}/", check=False)
-        if not (dst / "binder_sched.c").exists():
-            self._mark("oplus_binder", "failed", "copy into tree failed")
-            return
-        kconfig = common_dir / "drivers/android/Kconfig"
-        if kconfig.exists():
-            content = kconfig.read_text()
-            if "oplus_binder/Kconfig" not in content:
-                with open(kconfig, "a") as f:
-                    f.write('source "drivers/android/oplus_binder/Kconfig"\n')
-        else:
-            logger.warning(f"drivers/android/Kconfig not found - oplus_binder Kconfig not wired")
-        makefile = common_dir / "drivers/android/Makefile"
-        if makefile.exists():
-            content = makefile.read_text()
-            if "oplus_binder" not in content:
-                with open(makefile, "a") as f:
-                    f.write("obj-$(CONFIG_OPLUS_BINDER_STRATEGY) += oplus_binder/\n")
-        else:
-            logger.warning(f"drivers/android/Makefile not found - oplus_binder obj- not wired")
-        self._oplus_binder_applied = True
-        self._mark("oplus_binder", "applied",
-                    "STRATEGY+PRIO_SKIP vendored (TRANS_CTRL excluded, OnePlus GKI leaves it off)")
+        self._apply_vendored_oplus_module(
+            key="oplus_binder", title="Adding OPlus binder strategy (PRIO_SKIP)",
+            enabled=self.config.use_oplus_binder,
+            src_dirname="oplus_binder", sentinel="binder_sched.c",
+            dst_rel="drivers/android/oplus_binder",
+            kconfig_rel="drivers/android/Kconfig",
+            kconfig_source='source "drivers/android/oplus_binder/Kconfig"',
+            makefile_rel="drivers/android/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_BINDER_STRATEGY) += oplus_binder/",
+            hook_checks=[("include/trace/hooks/binder.h",
+                          ["android_vh_binder_priority_skip",
+                           "android_vh_binder_restore_priority"])],
+            applied_attr="_oplus_binder_applied",
+            applied_detail="STRATEGY+PRIO_SKIP vendored (TRANS_CTRL excluded, OnePlus GKI leaves it off)")
+
+    def apply_oplus_kswapd(self):
+        """Vendors OPlus's kswapd_opt module into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550,
+        branch oneplus/sm8550_v_15.0.0_oneplus11,
+        vendor/oplus/kernel/mm/kswapd_opt/ (vendored under
+        scripts/oplus_kswapd_opt/). Upstream wires it under mm/; here it
+        lives under drivers/ next to the other oplus vendor modules so all
+        three share one wiring pattern and stay clear of the SUSFS core
+        patch's mm/ hunks.
+
+        What it does: high-order alloc flag adjustment to skip kswapd
+        reclaim where low-order fallback is possible, plus per-order
+        alloc-slowpath/kswapd-load statistics - all behind static keys
+        toggled via /proc/oplus_mem/*, everything OFF by default, so an
+        enabled-but-untouched build behaves exactly like stock.
+
+        KMI-safe by construction: consumes existing Google/mainline hooks
+        and tracepoints only (adjust_alloc_flags, kvmalloc_node_use_vmalloc,
+        alloc_pages_slowpath, vmscan_kswapd_done, mm_vmscan_kswapd_wake),
+        no in-tree delta, no struct changes, no new exported symbols.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_kswapd", title="Adding OPlus kswapd_opt",
+            enabled=self.config.use_oplus_kswapd,
+            src_dirname="oplus_kswapd_opt", sentinel="kswapd_opt.c",
+            dst_rel="drivers/oplus_kswapd_opt",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_kswapd_opt/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_FEATURE_KSWAPD_OPT) += oplus_kswapd_opt/",
+            hook_checks=[
+                ("include/trace/hooks/iommu.h",
+                 ["android_vh_adjust_alloc_flags"]),
+                ("include/trace/hooks/mm.h",
+                 ["android_vh_kvmalloc_node_use_vmalloc",
+                  "android_vh_alloc_pages_slowpath"]),
+                ("include/trace/hooks/vmscan.h",
+                 ["android_vh_vmscan_kswapd_done"]),
+                ("mm/vmscan.c", ["mm_vmscan_kswapd_wake"]),
+            ],
+            applied_attr="_oplus_kswapd_applied",
+            applied_detail="KSWAPD_OPT vendored (all knobs off by default via /proc/oplus_mem/*)")
+
+    def apply_oplus_waker(self):
+        """Vendors OPlus's waker_identify module into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550,
+        branch oneplus/sm8550_v_15.0.0_oneplus11,
+        vendor/oplus/kernel/cpu/waker_identify/ (vendored under
+        scripts/oplus_waker_identify/). Upstream wires it under
+        kernel/sched/; here it lives under drivers/ next to the other
+        oplus vendor modules (see apply_oplus_kswapd for why).
+
+        What it does: attributes wakeups to wakers via
+        android_rvh_try_to_wake_up_success and reports wake chains for a
+        traced pid through /proc/waker_identify/*. Purely observational -
+        idle until driven through procfs, zero behavior change otherwise.
+
+        KMI-safe by construction: one restricted sched hook plus mainline
+        sched APIs only, no in-tree delta, no struct changes.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_waker", title="Adding OPlus waker_identify",
+            enabled=self.config.use_oplus_waker,
+            src_dirname="oplus_waker_identify", sentinel="waker_identify.c",
+            dst_rel="drivers/oplus_waker_identify",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_waker_identify/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY) += oplus_waker_identify/",
+            hook_checks=[("include/trace/hooks/sched.h",
+                          ["android_rvh_try_to_wake_up_success"])],
+            applied_attr="_oplus_waker_applied",
+            applied_detail="WAKER_IDENTIFY vendored (idle until used via /proc/waker_identify/*)")
 
     def add_vendor_module_blacklist(self):
         """Blocks specific vendor-provided .ko modules from ever loading
@@ -2851,6 +2951,21 @@ CONFIG_CIFS_XATTR=y
                 f.write("CONFIG_OPLUS_BINDER_STRATEGY=y\n")
                 f.write("CONFIG_OPLUS_BINDER_PRIO_SKIP=y\n")
 
+        if self.config.use_oplus_kswapd and self._oplus_kswapd_applied:
+            # Built-in (=y), same Image-only rationale as oplus_binder
+            # above. All runtime knobs default off, so =y changes nothing
+            # until driven through /proc/oplus_mem/*.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus kswapd_opt (--oplus-kswapd) ===\n")
+                f.write("CONFIG_OPLUS_FEATURE_KSWAPD_OPT=y\n")
+
+        if self.config.use_oplus_waker and self._oplus_waker_applied:
+            # Built-in (=y), same Image-only rationale. Observational
+            # only - idle until driven through /proc/waker_identify/*.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus waker_identify (--oplus-waker) ===\n")
+                f.write("CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY=y\n")
+
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
             with open(build_config, "r") as f:
@@ -3743,6 +3858,10 @@ CONFIG_CIFS_XATTR=y
         if self.config.use_oplus_binder and self._oplus_binder_applied:
             symbols.append(("CONFIG_OPLUS_BINDER_STRATEGY", False))
             symbols.append(("CONFIG_OPLUS_BINDER_PRIO_SKIP", False))
+        if self.config.use_oplus_kswapd and self._oplus_kswapd_applied:
+            symbols.append(("CONFIG_OPLUS_FEATURE_KSWAPD_OPT", False))
+        if self.config.use_oplus_waker and self._oplus_waker_applied:
+            symbols.append(("CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY", False))
         if self.config.use_zram:
             symbols.append(("CONFIG_ZRAM", False))
             symbols.append(("CONFIG_CRYPTO_LZ4KD", False))
@@ -4312,6 +4431,8 @@ CONFIG_CIFS_XATTR=y
             # Vendor-hook-only module + Kconfig edit, no in-tree deltas -
             # same "before configure_kernel()" rule as every other feature.
             self.apply_oplus_binder()
+            self.apply_oplus_kswapd()
+            self.apply_oplus_waker()
             # Before configure_kernel(), like every other feature: it
             # edits Kconfig, and the fragment written below depends on
             # that edit having happened.

@@ -177,6 +177,13 @@ BBG="1"
 # OnePlusOSS sm8550, hardware-independent and KMI-safe. New/optional -
 # set to "" to build without it.
 OPLUS_BINDER="1"
+# OPLUS_KSWAPD: OPlus kswapd_opt (high-order alloc tuning + per-order
+# stats via /proc/oplus_mem/*, all off by default). OPLUS_WAKER: OPlus
+# waker_identify (wakeup attribution via /proc/waker_identify/*, idle
+# until used). Both are hardware-independent, KMI-safe vendor-hook
+# modules vendored from OnePlusOSS sm8550. Set to "" to build without.
+OPLUS_KSWAPD="1"
+OPLUS_WAKER="1"
 
 # EXTRA_NET: optional networking config set - IPv6 NAT (ip6tables nat
 # table + MASQUERADE), nftables with the sub-options that make it
@@ -373,7 +380,11 @@ for key, entries in data.items():
         [ -n "$lts" ] && EXTRA_ARGS+=(--lts)
         [ -n "$DROIDSPACES" ] && EXTRA_ARGS+=(--droidspaces)
         [ -n "$BBG" ] && EXTRA_ARGS+=(--bbg)
-        [ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
+[ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
+[ -n "$OPLUS_KSWAPD" ] && EXTRA_ARGS+=(--oplus-kswapd)
+[ -n "$OPLUS_WAKER" ] && EXTRA_ARGS+=(--oplus-waker)
+        [ -n "$OPLUS_KSWAPD" ] && EXTRA_ARGS+=(--oplus-kswapd)
+        [ -n "$OPLUS_WAKER" ] && EXTRA_ARGS+=(--oplus-waker)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
         [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
         [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)

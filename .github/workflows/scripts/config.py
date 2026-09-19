@@ -167,6 +167,11 @@ class BuildConfig:
     # OnePlusOSS sm8550, see KernelBuilder.apply_oplus_binder(). Off by
     # default: new/optional, enable explicitly with --oplus-binder.
     use_oplus_binder: bool = False
+    # OPlus kswapd_opt + waker_identify - vendored vendor-hook modules,
+    # see KernelBuilder.apply_oplus_kswapd()/apply_oplus_waker(). Off by
+    # default: new/optional, enable explicitly.
+    use_oplus_kswapd: bool = False
+    use_oplus_waker: bool = False
     allow_bazel: bool = False
     blacklist_modules: str = ""
     # ath9k_htc за TL-WN722N v1 (AR9271) по OTG. Целият wireless
@@ -280,6 +285,8 @@ class BuildConfig:
             "use_ntsync": self.use_ntsync,
             "use_bbg": self.use_bbg,
             "use_oplus_binder": self.use_oplus_binder,
+            "use_oplus_kswapd": self.use_oplus_kswapd,
+            "use_oplus_waker": self.use_oplus_waker,
             "allow_bazel": self.allow_bazel,
             "blacklist_modules": self.blacklist_modules,
             "use_ath9k": self.use_ath9k,

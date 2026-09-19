@@ -1,0 +1,12 @@
+# Vendored from OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550
+# branch oneplus/sm8550_v_15.0.0_oneplus11, path vendor/oplus/kernel/mm/kswapd_opt/Kconfig.
+# Verbatim. Wired into the tree via drivers/{Kconfig,Makefile} by
+# KernelBuilder.apply_oplus_kswapd() (upstream places it under mm/).
+config OPLUS_FEATURE_KSWAPD_OPT
+	tristate "enable oplus kswapd opt feature"
+	default n
+	help
+	  This feature enable some kswapd opt feature. include
+	  alloc callsite adjust flags to exclude kswapd_recalim where fallback to low order alloc possible.
+	  collect alloc slowpath wakeup kswapd stat by order layout.
+	  collect kswapd pgdat_balance workload stat by order layout.

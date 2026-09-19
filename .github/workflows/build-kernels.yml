@@ -60,6 +60,16 @@ on:
         required: true
         type: boolean
         default: true
+      oplus_kswapd:
+        description: 'Enable OPlus kswapd_opt (high-order alloc tuning + stats via /proc/oplus_mem/*, off by default). HW-independent, KMI-safe.'
+        required: true
+        type: boolean
+        default: false
+      oplus_waker:
+        description: 'Enable OPlus waker_identify (wakeup attribution via /proc/waker_identify/*). Observational only. HW-independent, KMI-safe.'
+        required: true
+        type: boolean
+        default: false
       oplus_binder:
         description: 'Enable OPlus binder strategy (PRIO_SKIP - no RT->CFS demotion during binder transactions, 5.15 saved_priority fix). Vendored from OnePlusOSS sm8550, HW-independent, KMI-safe.'
         required: true
@@ -242,6 +252,8 @@ jobs:
           [ "${{ github.event.inputs.use_ntsync }}" = "false" ] && ARGS="$ARGS --no-ntsync"
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           [ "${{ github.event.inputs.oplus_binder }}" = "true" ] && ARGS="$ARGS --oplus-binder"
+          [ "${{ github.event.inputs.oplus_kswapd }}" = "true" ] && ARGS="$ARGS --oplus-kswapd"
+          [ "${{ github.event.inputs.oplus_waker }}" = "true" ] && ARGS="$ARGS --oplus-waker"
           [ -n "${{ github.event.inputs.blacklist_modules }}" ] && ARGS="$ARGS --blacklist-modules \"${{ github.event.inputs.blacklist_modules }}\""
           [ "${{ github.event.inputs.DROIDSPACES }}" = "true" ] && ARGS="$ARGS --droidspaces"
           [ "${{ github.event.inputs.enable_ksm }}" = "true" ] && ARGS="$ARGS --ksm"
