@@ -385,12 +385,14 @@ fi
 # ccache's 5G default, which silently re-cold-starts the cache and forces
 # full recompiles. 20G + compression keeps repeat identical builds hot,
 # so a component is compiled once and reused on every later run.
+# inode_cache speeds ccache's own file hashing on fast local disks.
 if command -v ccache &>/dev/null; then
     : "${CCACHE_DIR:=$HOME/.ccache}"
     export CCACHE_DIR
     mkdir -p "$CCACHE_DIR" 2>/dev/null
     ccache --max-size=20G >/dev/null 2>&1
     ccache --set-config=compression=true >/dev/null 2>&1
+    ccache --set-config=inode_cache=true >/dev/null 2>&1
     echo "ccache dir: $CCACHE_DIR"
     ccache -s 2>/dev/null | grep -iE "cache size|hit rate" | head -n 4
     echo ""

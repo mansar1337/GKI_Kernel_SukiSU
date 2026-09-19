@@ -3921,6 +3921,7 @@ CONFIG_CIFS_XATTR=y
     def build_kernel(self) -> bool:
         logger.info("=== Starting kernel compilation ===")
         self._chdir(self.work_dir)
+        self._log_ccache_stats("before compile")
 
         # NOTE ON SCOPE: this strips KMI_SYMBOL_LIST_STRICT_MODE from
         # build.config.gki.aarch64, which is the LEGACY build.sh path's
@@ -4090,12 +4091,28 @@ CONFIG_CIFS_XATTR=y
 
             if success:
                 logger.info("=== Kernel compilation succeeded ===")
+                self._log_ccache_stats("after compile")
                 return True
             logger.error("Kernel compilation failed")
             return False
         except Exception as e:
             logger.error(f"Error during compilation: {e}")
             return False
+
+    def _log_ccache_stats(self, when: str):
+        """Logs a 3-line ccache summary so the build log itself shows
+        whether the compiler cache is cold, warming or hot - the first
+        thing to check when "every rebuild compiles everything again".
+        Never fails the build (ccache may be absent, e.g. minimal CI)."""
+        result = self._run_cmd("ccache -s", check=False, capture_output=True)
+        if result.returncode != 0:
+            return
+        interesting = [l.strip() for l in (result.stdout or "").splitlines()
+                       if any(k in l for k in ("Cacheable calls", "Hits:",
+                                              "Misses:", "Cache size",
+                                              "Uncacheable"))]
+        logger.info(f"ccache stats ({when}): "
+                    + (" | ".join(interesting[:4]) if interesting else "n/a"))
 
     def _verify_expected_objects(self):
         """Post-build sanity check: confirm specific source files we
