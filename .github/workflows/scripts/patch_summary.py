@@ -27,6 +27,7 @@ DISPLAY_NAMES = {
     "zram_lz4kd": "ZRAM (LZ4KD)",
     "task_mmu_fixes": "task_mmu.c Fixes",
     "baseband_guard": "Baseband-guard",
+    "oplus_binder": "OPlus Binder (PRIO_SKIP)",
     "vendor_module_blacklist": "Vendor Module Blacklist",
     "droidspaces": "Droidspaces",
     "bbrv3": "BBRv3",

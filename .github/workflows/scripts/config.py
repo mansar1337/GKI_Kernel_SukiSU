@@ -163,6 +163,10 @@ class BuildConfig:
     use_psi: bool = True
     use_ntsync: bool = True
     use_bbg: bool = False
+    # OPlus binder strategy (PRIO_SKIP) - vendored vendor-hook module from
+    # OnePlusOSS sm8550, see KernelBuilder.apply_oplus_binder(). Off by
+    # default: new/optional, enable explicitly with --oplus-binder.
+    use_oplus_binder: bool = False
     allow_bazel: bool = False
     blacklist_modules: str = ""
     # ath9k_htc за TL-WN722N v1 (AR9271) по OTG. Целият wireless
@@ -275,6 +279,7 @@ class BuildConfig:
             "use_psi": self.use_psi,
             "use_ntsync": self.use_ntsync,
             "use_bbg": self.use_bbg,
+            "use_oplus_binder": self.use_oplus_binder,
             "allow_bazel": self.allow_bazel,
             "blacklist_modules": self.blacklist_modules,
             "use_ath9k": self.use_ath9k,

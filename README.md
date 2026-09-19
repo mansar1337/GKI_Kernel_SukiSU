@@ -168,6 +168,15 @@ su -c "zcat /proc/config.gz | grep -E 'CONFIG_LTO_CLANG_(FULL|THIN)'"
 ```
 Active if it shows `CONFIG_LTO_CLANG_FULL=y` (release) or `CONFIG_LTO_CLANG_THIN=y` (CI).
 
+### IPC
+
+**OPlus binder strategy (PRIO_SKIP)** *(`--oplus-binder`)* — vendored vendor-hook module from OnePlusOSS `sm8550` (`vendor/oplus/kernel/ipc`): an RT binder thread is no longer demoted to CFS priority for the duration of a binder transaction, plus a 5.15 `saved_priority` restore fix. Hardware-independent and KMI-safe (consumes existing Google vendor hooks only — no `binder.c` delta, no struct changes, no new exported symbols; OnePlus's own `binder.c` carries zero oplus modifications). Sched-assist-coupled hunks compile out automatically when sched assist is absent. `TRANS_CTRL` deliberately excluded (OnePlus's own GKI config leaves it off).
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_OPLUS_BINDER"
+su -c "ls /sys/module/oplus_binder_strategy"
+```
+Active if both `CONFIG_OPLUS_BINDER_STRATEGY=y` and `CONFIG_OPLUS_BINDER_PRIO_SKIP=y` are shown and the sysfs entry exists (toggle at runtime via `/sys/module/oplus_binder_strategy/parameters/binder_sched_enable`).
+
 ### Containers & compatibility
 
 **Droidspaces** — real Linux namespace isolation (PID/IPC/Mount/User) at the kernel level: run a full Linux distro in a genuine container with its own init system (systemd, OpenRC), not just a chroot. Managed via the [Droidspaces app](https://github.com/ravindu644/Droidspaces-OSS). See [Droidspaces details](#droidspaces-details) below.
@@ -379,6 +388,7 @@ Tracked families: `android12-5.10`, `android13-5.15`, `android14-6.1`, `android1
 | `--zram` | Enable ZRAM (LZ4KD) | False |
 | `--no-kpm` | Disable KPM | False |
 | `--bbg` | Enable Baseband-guard | False |
+| `--oplus-binder` | Enable OPlus binder strategy (PRIO_SKIP) | False |
 | `--droidspaces` | Enable Droidspaces (android12/13/14 only) | False |
 | `--op8e` | Enable OnePlus 8E support | False |
 | `--bbr-version` | Congestion control: `none`, `bbr1`, or `bbr3` (bbr3 android12/13/14 only) | bbr1 |

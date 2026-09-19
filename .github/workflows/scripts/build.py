@@ -71,6 +71,12 @@ def parse_args() -> argparse.Namespace:
                              "show_map_vma() and fails the build under -Werror=unused-*. On by "
                              "default (existing behavior) - pass this until upstream fixes it.")
     parser.add_argument("--bbg", action="store_true")
+    parser.add_argument("--oplus-binder", action="store_true",
+                        help="Enable the OPlus binder strategy (PRIO_SKIP) - vendored "
+                             "vendor-hook module from OnePlusOSS sm8550 that keeps an RT "
+                             "binder thread from being demoted to CFS priority during a "
+                             "transaction, plus a 5.15 saved_priority fix. Hardware- "
+                             "independent, KMI-safe (hooks only, no struct changes).")
     parser.add_argument("--allow-bazel", action="store_true",
                         help="Allow building branches that require Bazel/Kleaf instead of the "
                              "legacy build/build.sh script (android15-6.6+, and some newer "
@@ -163,6 +169,7 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_ntsync=not args.no_ntsync,
         use_hide_stuff=not args.no_hide_stuff,
         use_bbg=args.bbg,
+        use_oplus_binder=args.oplus_binder,
         allow_bazel=args.allow_bazel,
         blacklist_modules=args.blacklist_modules,
         use_ath9k=args.ath9k,

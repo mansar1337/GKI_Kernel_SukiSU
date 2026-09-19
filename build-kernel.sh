@@ -171,6 +171,12 @@ LTO_MODE="full"
 # Set to "1" to enable Baseband-guard (blocks unauthorized writes to
 # baseband/modem and other protected partitions at the LSM level).
 BBG="1"
+# Set to "1" to enable the OPlus binder strategy (PRIO_SKIP - keeps an RT
+# binder thread from being demoted to CFS priority during a transaction,
+# plus a 5.15 saved_priority fix). Vendored vendor-hook module from
+# OnePlusOSS sm8550, hardware-independent and KMI-safe. New/optional -
+# set to "" to build without it.
+OPLUS_BINDER="1"
 
 # EXTRA_NET: optional networking config set - IPv6 NAT (ip6tables nat
 # table + MASQUERADE), nftables with the sub-options that make it
@@ -367,6 +373,7 @@ for key, entries in data.items():
         [ -n "$lts" ] && EXTRA_ARGS+=(--lts)
         [ -n "$DROIDSPACES" ] && EXTRA_ARGS+=(--droidspaces)
         [ -n "$BBG" ] && EXTRA_ARGS+=(--bbg)
+        [ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
         [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
         [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
@@ -453,6 +460,7 @@ EXTRA_ARGS=()
 [ -n "$IS_LTS" ] && EXTRA_ARGS+=(--lts)
 [ -n "$DROIDSPACES" ] && EXTRA_ARGS+=(--droidspaces)
 [ -n "$BBG" ] && EXTRA_ARGS+=(--bbg)
+[ -n "$OPLUS_BINDER" ] && EXTRA_ARGS+=(--oplus-binder)
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
 [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
 [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)

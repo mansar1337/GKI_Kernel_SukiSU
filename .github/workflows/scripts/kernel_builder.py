@@ -305,6 +305,7 @@ CONFIG_CIFS_XATTR=y
         # step).
         self.patch_status: dict = {}
         self._bbrv3_applied = False
+        self._oplus_binder_applied = False
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
 
@@ -1417,6 +1418,85 @@ CONFIG_CIFS_XATTR=y
             with open(kconfig_file, "w") as f:
                 f.write(content)
         self._mark("baseband_guard", "applied")
+
+    def _oplus_binder_dir(self) -> Path:
+        return Path(__file__).parent / "oplus_binder"
+
+    def apply_oplus_binder(self):
+        """Vendors OPlus's binder strategy module into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8550,
+        branch oneplus/sm8550_t_13.1.0_oneplus11 @ 21da51cc,
+        vendor/oplus/kernel/ipc/ (binder_main.c/h, binder_sched.c, Kconfig,
+        Makefile - vendored under scripts/oplus_binder/). Kconfig/Makefile
+        hook shape mirrors OnePlus's own drivers/android/ integration
+        (oneplus_sm8550_t @ 0d8983c4).
+
+        What it does: hooks android_vh_binder_priority_skip so an RT binder
+        thread is NOT demoted to CFS priority for the duration of a binder
+        transaction (CONFIG_OPLUS_BINDER_PRIO_SKIP), plus a 5.15
+        saved_priority restore fix on android_vh_binder_restore_priority.
+        Sched-assist-coupled hunks are already IS_ENABLED-guarded upstream
+        and compile out without sched assist.
+
+        Deliberately NOT ported: trans_ctrl.c/h (CONFIG_OPLUS_BINDER_TRANS_CTRL -
+        OnePlus's own kalama_GKI.config leaves it off; 938-line procfs surface).
+
+        KMI-safe by construction: consumes existing Google vendor hooks only,
+        no binder.c delta (OnePlus's own binder.c carries zero oplus changes),
+        no struct layout changes, no new exported symbols.
+        """
+        if not self.config.use_oplus_binder:
+            self._mark("oplus_binder", "skipped", "not requested")
+            return
+        logger.info("=== Adding OPlus binder strategy (PRIO_SKIP) ===")
+        common_dir = self.work_dir / "common"
+        if not common_dir.exists():
+            self._mark("oplus_binder", "failed", "common/ missing")
+            return
+        src = self._oplus_binder_dir()
+        if not (src / "binder_sched.c").exists():
+            self._mark("oplus_binder", "failed", f"vendored source missing at {src}")
+            return
+        # Fail fast if this branch lacks the hooks the module consumes.
+        # (Present on every GKI branch checked so far - android13-5.15
+        # verified; the module would otherwise compile AND load but never
+        # fire, since DECLARE_HOOK generates the register function even
+        # with zero call sites.)
+        hooks_header = common_dir / "include/trace/hooks/binder.h"
+        hooks_ok = False
+        if hooks_header.exists():
+            hooks_text = hooks_header.read_text()
+            hooks_ok = ("android_vh_binder_priority_skip" in hooks_text
+                        and "android_vh_binder_restore_priority" in hooks_text)
+        if not hooks_ok:
+            self._mark("oplus_binder", "failed",
+                        "binder vendor hooks missing in include/trace/hooks/binder.h")
+            return
+        dst = common_dir / "drivers/android/oplus_binder"
+        self._run_cmd(f"rm -rf {dst} && mkdir -p {dst} && cp -r {src}/. {dst}/", check=False)
+        if not (dst / "binder_sched.c").exists():
+            self._mark("oplus_binder", "failed", "copy into tree failed")
+            return
+        kconfig = common_dir / "drivers/android/Kconfig"
+        if kconfig.exists():
+            content = kconfig.read_text()
+            if "oplus_binder/Kconfig" not in content:
+                with open(kconfig, "a") as f:
+                    f.write('source "drivers/android/oplus_binder/Kconfig"\n')
+        else:
+            logger.warning(f"drivers/android/Kconfig not found - oplus_binder Kconfig not wired")
+        makefile = common_dir / "drivers/android/Makefile"
+        if makefile.exists():
+            content = makefile.read_text()
+            if "oplus_binder" not in content:
+                with open(makefile, "a") as f:
+                    f.write("obj-$(CONFIG_OPLUS_BINDER_STRATEGY) += oplus_binder/\n")
+        else:
+            logger.warning(f"drivers/android/Makefile not found - oplus_binder obj- not wired")
+        self._oplus_binder_applied = True
+        self._mark("oplus_binder", "applied",
+                    "STRATEGY+PRIO_SKIP vendored (TRANS_CTRL excluded, OnePlus GKI leaves it off)")
 
     def add_vendor_module_blacklist(self):
         """Blocks specific vendor-provided .ko modules from ever loading
@@ -2759,6 +2839,18 @@ CONFIG_CIFS_XATTR=y
                 with open(config_file, "a") as f:
                     f.write("CONFIG_DEFAULT_BBR=y\n")
 
+        if self.config.use_oplus_binder and self._oplus_binder_applied:
+            # Written here (not in apply_oplus_binder()) so the Kconfig
+            # edit it depends on has definitely happened first - same
+            # ordering rule as every other feature. Built-in (=y, not
+            # =m): boot.img/AnyKernel3 ship the Image only, no .ko
+            # sidecar, so a module would never load. Tiny (~200 lines)
+            # and inert when disabled via its binder_sched_enable param.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus binder strategy (RT prio-skip, --oplus-binder) ===\n")
+                f.write("CONFIG_OPLUS_BINDER_STRATEGY=y\n")
+                f.write("CONFIG_OPLUS_BINDER_PRIO_SKIP=y\n")
+
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
             with open(build_config, "r") as f:
@@ -3648,6 +3740,9 @@ CONFIG_CIFS_XATTR=y
             symbols.append(("CONFIG_FUSE_BPF", True))
         if self.config.use_bbg:
             symbols.append(("CONFIG_BBG", False))
+        if self.config.use_oplus_binder and self._oplus_binder_applied:
+            symbols.append(("CONFIG_OPLUS_BINDER_STRATEGY", False))
+            symbols.append(("CONFIG_OPLUS_BINDER_PRIO_SKIP", False))
         if self.config.use_zram:
             symbols.append(("CONFIG_ZRAM", False))
             symbols.append(("CONFIG_CRYPTO_LZ4KD", False))
@@ -4214,6 +4309,9 @@ CONFIG_CIFS_XATTR=y
             # Droidspaces' files, but applied here too for consistency
             # (all optional features settled before writing defconfig).
             self.apply_bbrv3_patches()
+            # Vendor-hook-only module + Kconfig edit, no in-tree deltas -
+            # same "before configure_kernel()" rule as every other feature.
+            self.apply_oplus_binder()
             # Before configure_kernel(), like every other feature: it
             # edits Kconfig, and the fragment written below depends on
             # that edit having happened.
