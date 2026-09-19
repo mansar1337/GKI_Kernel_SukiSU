@@ -335,6 +335,10 @@ CONFIG_CIFS_XATTR=y
             "os_patch_level": self.config.os_patch_level,
             "kernel_respin": self.detected_respin or "",
             "is_lts": self.is_lts_build,
+            # Read by build_summary.report_values() to render the exact
+            # on-device version (with or without _@oplusnize) in post-build
+            # announcements - same predicate _write_scmversion uses.
+            "oplus": self._any_oplus_enabled(),
             # thin/full only meaningful on the legacy build.sh path - the
             # config always carries a value, but Bazel branches ignore it
             # (mode is fixed upstream there, see kernel_builder.py's

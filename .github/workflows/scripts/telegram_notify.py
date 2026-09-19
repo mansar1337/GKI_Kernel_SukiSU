@@ -146,8 +146,38 @@ def build_single_notify_message(
     use_zram: bool,
     use_kpm: bool,
     hashes_file: str = None,
+    status_file: str = None,
 ) -> str:
-    """Build the notification message for a single completed build"""
+    """Build the notification message for a single completed build.
+
+    When the build's PATCH_STATUS.json is passed (status_file), the
+    message uses the shared oplusnize template with the exact on-device
+    version - same string as the console summary. Otherwise falls back
+    to the legacy field list.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent))
+    from build_summary import report_values, render_html
+
+    if status_file and os.path.exists(status_file):
+        try:
+            with open(status_file, encoding="utf-8") as f:
+                release, lto = report_values(json.load(f))
+            if release:
+                message = render_html(release, lto)
+                if hashes_file and os.path.exists(hashes_file):
+                    files = parse_sha256sums(hashes_file)
+                    if files:
+                        message += "\n\n<b>📋 File checksums (SHA256):</b>"
+                        for file_info in files:
+                            filename = os.path.basename(file_info["filename"])
+                            file_hash = file_info["hash"]
+                            message += f"\n<code>{filename}</code>"
+                            message += f"\n<code>{file_hash}</code>"
+                return message
+        except Exception as e:
+            print(f"Status file unreadable ({e}) - using legacy format")
+
     message = f"""✅ <b>Kernel build succeeded</b>
 
 <b>📱 Android:</b> {android_version}
@@ -225,7 +255,9 @@ def build_release_notify_message(
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  python telegram_notify.py single <android> <kernel> <sub_level> <os_patch> <ksu_version> <zram> <kpm> [hashes_file]")
+        print("  python telegram_notify.py single <android> <kernel> <sub_level> <os_patch> <ksu_version> <zram> <kpm> [hashes_file] [status.json]")
+        print("    (an extra existing *.json arg is read as the build's PATCH_STATUS.json")
+        print("    and switches the message to the oplusnize template with the exact version)")
         print("  python telegram_notify.py release <tag> <url> [notes_file] [hashes_file]")
         sys.exit(1)
 
@@ -240,6 +272,11 @@ def main():
         hashes_file = sys.argv[8] if len(sys.argv) > 8 else None
         if hashes_file and not os.path.exists(hashes_file):
             hashes_file = None
+        status_file = None
+        for arg in sys.argv[9:]:
+            if arg.endswith(".json") and os.path.exists(arg):
+                status_file = arg
+                break
 
         message = build_single_notify_message(
             android_version=sys.argv[2],
@@ -250,6 +287,7 @@ def main():
             use_zram=sys.argv[7].lower() == "true",
             use_kpm=True,
             hashes_file=hashes_file,
+            status_file=status_file,
         )
         success = notifier.send_message(message)
 

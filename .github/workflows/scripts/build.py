@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import BuildConfig, AndroidVersion, KernelVersion, ANDROID_KERNEL_MAP, KSUVersion
 from kernel_builder import KernelBuilder, BuildResult
+from build_summary import kernel_release_string, render_text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -254,7 +255,35 @@ def build_single(config: BuildConfig, workspace: str, dry_run: bool = False) -> 
     return builder.build()
 
 
-def print_summary(results: list, output_json: str = None):
+def _any_oplus(config: BuildConfig) -> bool:
+    return bool(config.use_oplus_binder or config.use_oplus_kswapd
+                or config.use_oplus_waker or config.use_oplus_patch
+                or config.use_oplus_zstd or config.use_oplus_pcompact)
+
+
+def _summary_for_result(r, workspace: str = None) -> str:
+    """Render the post-build template for one result, exact when the
+    build wrote PATCH_STATUS.json (same inputs as .scmversion), best
+    effort from the requested config otherwise (no respin known yet)."""
+    import json as _json
+    if workspace:
+        report_path = Path(workspace) / r.config.config_name / "PATCH_STATUS.json"
+        if report_path.exists():
+            try:
+                from build_summary import report_values
+                release, lto = report_values(_json.loads(report_path.read_text()))
+                if release:
+                    return render_text(release, lto)
+            except Exception:
+                pass
+    release = kernel_release_string(
+        r.config.kernel_version, r.config.sub_level, r.config.android_version,
+        is_lts=r.config.is_lts_build, oplus=_any_oplus(r.config))
+    return render_text(release, r.config.lto_mode)
+
+
+def print_summary(results: list, output_json: str = None, workspace: str = None,
+                  dry_run: bool = False):
     total = len(results)
     success = sum(1 for r in results if r.success)
 
@@ -276,6 +305,11 @@ def print_summary(results: list, output_json: str = None):
             if not r.success:
                 print(f"  - {r.config.config_name}: {r.message}")
     print("=" * 60)
+
+    for r in results:
+        if r.success and not dry_run:
+            print()
+            print(_summary_for_result(r, workspace))
 
     if output_json:
         json_data = {
@@ -320,7 +354,7 @@ def main():
         return 1
 
     if results:
-        print_summary(results, args.output_json)
+        print_summary(results, args.output_json, workspace, args.dry_run)
 
     if results and all(r.success for r in results):
         return 0
