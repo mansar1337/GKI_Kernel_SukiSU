@@ -49,6 +49,131 @@ def render_html(kernel_release, lto_mode):
             f"ℹ️ {lto_label(lto_mode)}")
 
 
+# Patch-status keys that are infrastructure/checks, not user features -
+# never listed in the report even when applied.
+SKIP_FEATURE_KEYS = {
+    "effective_config", "image_ikconfig", "safemode_disable",
+    "ksu_version_code", "bbg_genheaders_path",
+    "susfs_kernelsu_integration", "selinux_hide_guards",
+    "oplus_modules", "ath9k_modules",
+    "bazel_check_defconfig", "bazel_post_defconfig_cmds",
+    "defconfig_canonicalization",
+}
+
+# Curated display order; anything applied but unlisted here is appended
+# alphabetically (raw key) so new features never vanish silently.
+FEATURE_ORDER = [
+    "sukisu_ref", "susfs", "baseband_guard", "droidspaces", "bbrv3",
+    "ntsync", "zram_lz4kd", "vendor_module_blacklist",
+    "ptrace_leak_fix", "unicode_bypass_fix", "task_mmu_fixes",
+    "sukisu_hide_stuff", "ath9k",
+    "oplus_binder", "oplus_kswapd", "oplus_waker", "oplus_patch",
+    "oplus_zstd", "oplus_pcompact", "oplus_mm", "micro_opts",
+]
+
+FEATURE_LABELS = {
+    "susfs": "SUSFS",
+    "baseband_guard": "BBG",
+    "droidspaces": "Droidspaces",
+    "bbrv3": "BBRv3",
+    "ntsync": "NTSync",
+    "zram_lz4kd": "ZRAM+LZ4KD",
+    "vendor_module_blacklist": "vendor blacklist",
+    "ptrace_leak_fix": "ptrace fix",
+    "unicode_bypass_fix": "unicode fix",
+    "task_mmu_fixes": "task_mmu fixes",
+    "sukisu_hide_stuff": "hide stuff",
+    "ath9k": "ath9k_htc",
+    "oplus_binder": "binder PRIO_SKIP",
+    "oplus_kswapd": "kswapd_opt",
+    "oplus_waker": "waker_identify",
+    "oplus_patch": "kprobe framework",
+    "oplus_zstd": "zstdn_o",
+    "oplus_pcompact": "proactive_compact",
+    "oplus_mm": "mm family (6)",
+    "micro_opts": "micro-opts (15)",
+}
+
+
+def feature_list(patches):
+    """Human-readable applied-feature labels from a PATCH_STATUS patches
+    dict, in curated order. sukisu_ref carries its version."""
+    if not isinstance(patches, dict):
+        return []
+    applied = {k for k, e in patches.items()
+               if isinstance(e, dict) and e.get("status") == "applied"
+               and k not in SKIP_FEATURE_KEYS}
+    out = []
+    for key in FEATURE_ORDER:
+        if key not in applied:
+            continue
+        if key == "sukisu_ref":
+            detail = patches[key].get("detail", "") or ""
+            ver = detail.split()[0] if detail.split() else ""
+            out.append(f"SukiSU-Ultra {ver}".rstrip())
+        else:
+            out.append(FEATURE_LABELS.get(key, key))
+    for key in sorted(applied - set(FEATURE_ORDER)):
+        out.append(FEATURE_LABELS.get(key, key))
+    return out
+
+
+def format_date(ts=None):
+    import datetime as _dt
+    if ts is None:
+        ts = _dt.datetime.now(_dt.timezone.utc).timestamp()
+    return _dt.datetime.fromtimestamp(ts, _dt.timezone.utc).strftime("%Y-%m-%d")
+
+
+def format_duration(seconds):
+    try:
+        s = int(seconds)
+    except (TypeError, ValueError):
+        return ""
+    h, s = divmod(s, 3600)
+    m, s = divmod(s, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def render_full_text(kernel_release, lto_mode, date=None, features=None,
+                     artifacts=None, build_time=None):
+    lines = ["✅ New Build", "",
+             f"ℹ️ Version: {kernel_release}",
+             f"ℹ️ LTO: {lto_label(lto_mode)} | Date: {date or format_date()}"]
+    if features:
+        lines.append(f"ℹ️ Features ({len(features)}): " + ", ".join(features))
+    if artifacts:
+        names = [a.rsplit("/", 1)[-1] for a in artifacts]
+        lines.append(f"📦 Artifacts ({len(names)}): " + ", ".join(names))
+    if build_time:
+        dur = format_duration(build_time)
+        if dur:
+            lines.append(f"⏱ Build time: {dur}")
+    return "\n".join(lines)
+
+
+def render_full_html(kernel_release, lto_mode, date=None, features=None,
+                     artifacts=None, build_time=None):
+    lines = ["✅ <b>New Build</b>", "",
+             f"ℹ️ <b>Version:</b> <code>{kernel_release}</code>",
+             f"ℹ️ <b>LTO:</b> {lto_label(lto_mode)} | <b>Date:</b> {date or format_date()}"]
+    if features:
+        lines.append(f"ℹ️ <b>Features ({len(features)}):</b> " + ", ".join(features))
+    if artifacts:
+        names = [a.rsplit("/", 1)[-1] for a in artifacts]
+        lines.append("📦 <b>Artifacts (%d):</b> " % len(names)
+                     + ", ".join(f"<code>{n}</code>" for n in names))
+    if build_time:
+        dur = format_duration(build_time)
+        if dur:
+            lines.append(f"⏱ <b>Build time:</b> {dur}")
+    return "\n".join(lines)
+
+
 def report_values(report):
     """Pull (kernel_release, lto_mode) out of a PATCH_STATUS.json dict,
     or (None, None) if the report doesn't have what it takes."""

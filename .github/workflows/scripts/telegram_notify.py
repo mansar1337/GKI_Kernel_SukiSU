@@ -157,23 +157,31 @@ def build_single_notify_message(
     """
     import sys as _sys
     _sys.path.insert(0, str(Path(__file__).parent))
-    from build_summary import report_values, render_html
+    from build_summary import (report_values, feature_list, format_date,
+                               render_full_html)
 
     if status_file and os.path.exists(status_file):
         try:
             with open(status_file, encoding="utf-8") as f:
-                release, lto = report_values(json.load(f))
+                report = json.load(f)
+            release, lto = report_values(report)
             if release:
-                message = render_html(release, lto)
+                files = []
                 if hashes_file and os.path.exists(hashes_file):
-                    files = parse_sha256sums(hashes_file)
-                    if files:
-                        message += "\n\n<b>📋 File checksums (SHA256):</b>"
-                        for file_info in files:
-                            filename = os.path.basename(file_info["filename"])
-                            file_hash = file_info["hash"]
-                            message += f"\n<code>{filename}</code>"
-                            message += f"\n<code>{file_hash}</code>"
+                    for file_info in parse_sha256sums(hashes_file):
+                        files.append(file_info["filename"])
+                message = render_full_html(
+                    release, lto,
+                    date=format_date(os.path.getmtime(status_file)),
+                    features=feature_list(report.get("patches")),
+                    artifacts=files)
+                if files:
+                    message += "\n\n<b>📋 File checksums (SHA256):</b>"
+                    for file_info in parse_sha256sums(hashes_file):
+                        filename = os.path.basename(file_info["filename"])
+                        file_hash = file_info["hash"]
+                        message += f"\n<code>{filename}</code>"
+                        message += f"\n<code>{file_hash}</code>"
                 return message
         except Exception as e:
             print(f"Status file unreadable ({e}) - using legacy format")

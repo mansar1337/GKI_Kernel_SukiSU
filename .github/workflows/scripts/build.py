@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import BuildConfig, AndroidVersion, KernelVersion, ANDROID_KERNEL_MAP, KSUVersion
 from kernel_builder import KernelBuilder, BuildResult
-from build_summary import kernel_release_string, render_text
+from build_summary import kernel_release_string, format_date
 
 logging.basicConfig(
     level=logging.INFO,
@@ -261,25 +261,73 @@ def _any_oplus(config: BuildConfig) -> bool:
                 or config.use_oplus_zstd or config.use_oplus_pcompact)
 
 
+def _features_from_config(config: BuildConfig) -> list:
+    """Best-effort feature list when no PATCH_STATUS.json is available
+    (e.g. a wiped workspace) - derived from requested flags."""
+    feats = []
+    if config.use_kpm:
+        feats.append("KPM")
+    if config.use_bbg:
+        feats.append("BBG")
+    if config.use_droidspaces:
+        feats.append("Droidspaces")
+    if config.bbr_version == "bbr3":
+        feats.append("BBRv3")
+    elif config.bbr_version == "bbr1":
+        feats.append("BBRv1")
+    if config.use_zram:
+        feats.append("ZRAM+LZ4KD")
+    if config.use_ntsync:
+        feats.append("NTSync")
+    if config.use_ath9k:
+        feats.append("ath9k_htc")
+    if config.use_oplus_binder:
+        feats.append("binder PRIO_SKIP")
+    if config.use_oplus_kswapd:
+        feats.append("kswapd_opt")
+    if config.use_oplus_waker:
+        feats.append("waker_identify")
+    if config.use_oplus_patch:
+        feats.append("kprobe framework")
+    if config.use_oplus_zstd:
+        feats.append("zstdn_o")
+    if config.use_oplus_pcompact:
+        feats.append("proactive_compact")
+    if config.use_oplus_mm:
+        feats.append("mm family (6)")
+    if config.use_micro_opts:
+        feats.append("micro-opts (15)")
+    return feats
+
+
 def _summary_for_result(r, workspace: str = None) -> str:
     """Render the post-build template for one result, exact when the
     build wrote PATCH_STATUS.json (same inputs as .scmversion), best
-    effort from the requested config otherwise (no respin known yet)."""
+    effort from the requested config otherwise."""
     import json as _json
+    from build_summary import report_values, feature_list, render_full_text
     if workspace:
         report_path = Path(workspace) / r.config.config_name / "PATCH_STATUS.json"
         if report_path.exists():
             try:
-                from build_summary import report_values
-                release, lto = report_values(_json.loads(report_path.read_text()))
+                report = _json.loads(report_path.read_text())
+                release, lto = report_values(report)
                 if release:
-                    return render_text(release, lto)
+                    return render_full_text(
+                        release, lto,
+                        date=format_date(report_path.stat().st_mtime),
+                        features=feature_list(report.get("patches")),
+                        artifacts=r.artifacts,
+                        build_time=r.build_time)
             except Exception:
                 pass
     release = kernel_release_string(
         r.config.kernel_version, r.config.sub_level, r.config.android_version,
         is_lts=r.config.is_lts_build, oplus=_any_oplus(r.config))
-    return render_text(release, r.config.lto_mode)
+    return render_full_text(release, r.config.lto_mode,
+                            features=_features_from_config(r.config),
+                            artifacts=r.artifacts,
+                            build_time=r.build_time)
 
 
 def print_summary(results: list, output_json: str = None, workspace: str = None,
