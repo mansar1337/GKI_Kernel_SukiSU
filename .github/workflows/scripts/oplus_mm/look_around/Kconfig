@@ -1,0 +1,8 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_LOOK_AROUND)).
+config LOOK_AROUND
+	tristate "oplus look-around page migration"
+	default n
+	help
+	  Look-around page migration hints via mm vendor hooks, stats at
+	  /proc look_around_stat. Load as a module.

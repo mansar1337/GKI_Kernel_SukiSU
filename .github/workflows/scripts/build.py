@@ -99,6 +99,18 @@ def parse_args() -> argparse.Namespace:
                         help="Enable OPlus proactive_compact - procfs-driven "
                              "memory compaction via "
                              "/proc/oplus_mem/fragmentation_index.")
+    parser.add_argument("--micro-opts", action="store_true",
+                        help="Enable the WildKernels micro-optimizations pack "
+                             "(15 small generic patches: arm64 mem/string ops, "
+                             "dcache, alarmtimer, s2idle, tcp, f2fs/ext4, "
+                             "wakelocks, logspam). Each patch is applied only "
+                             "if it fits this branch.")
+    parser.add_argument("--oplus-mm", action="store_true",
+                        help="Enable the OPlus mm module family (6 loadable "
+                             "modules: async lruvec/slab reclaim, pcppages, "
+                             "abort-mm, look-around, mapped-protect). "
+                             "Opt-in at insmod; Image behaves like stock "
+                             "until loaded.")
     parser.add_argument("--allow-bazel", action="store_true",
                         help="Allow building branches that require Bazel/Kleaf instead of the "
                              "legacy build/build.sh script (android15-6.6+, and some newer "
@@ -197,6 +209,8 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_oplus_patch=args.oplus_patch,
         use_oplus_zstd=args.oplus_zstd,
         use_oplus_pcompact=args.oplus_pcompact,
+        use_micro_opts=args.micro_opts,
+        use_oplus_mm=args.oplus_mm,
         allow_bazel=args.allow_bazel,
         blacklist_modules=args.blacklist_modules,
         use_ath9k=args.ath9k,

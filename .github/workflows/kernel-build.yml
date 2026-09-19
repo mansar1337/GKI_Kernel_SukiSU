@@ -268,9 +268,8 @@ jobs:
           [ "${{ github.event.inputs.BBG }}" = "true" ] && ARGS="$ARGS --bbg"
           # Always on: OPlus binder strategy (PRIO_SKIP) is hardware-independent,
           # KMI-safe and tiny - no reason to gate it behind a workflow input slot
-          # (workflow_dispatch caps inputs at 25). Same for kswapd_opt,
-          # waker_identify, kprobe framework, zstd and proactive_compact below.
-          ARGS="$ARGS --oplus-binder --oplus-kswapd --oplus-waker --oplus-patch --oplus-zstd --oplus-pcompact"
+          # (workflow_dispatch caps inputs at 25). Same for the rest below.
+          ARGS="$ARGS --oplus-binder --oplus-kswapd --oplus-waker --oplus-patch --oplus-zstd --oplus-pcompact --micro-opts --oplus-mm"
           [ -n "${{ github.event.inputs.blacklist_modules }}" ] && ARGS="$ARGS --blacklist-modules \"${{ github.event.inputs.blacklist_modules }}\""
           [ "${{ github.event.inputs.DROIDSPACES }}" = "true" ] && ARGS="$ARGS --droidspaces"
           [ "${{ github.event.inputs.enable_ksm }}" = "true" ] && ARGS="$ARGS --ksm"
@@ -291,6 +290,7 @@ jobs:
           find /tmp/gki-build -name "*AnyKernel3*.zip" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "*-boot.img" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "crypto_zstdn_o.ko" -type f -exec cp {} artifacts/ \;
+          find /tmp/gki-build -name "oplus_bsp_*.ko" -type f -exec cp {} artifacts/ \;
 
       - name: Patch status summary
         run: |

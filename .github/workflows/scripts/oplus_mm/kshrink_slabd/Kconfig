@@ -1,0 +1,8 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_KSHRINK_SLABD)).
+config KSHRINK_SLABD
+	tristate "oplus async slab shrink kthread"
+	default n
+	help
+	  Async slab shrink daemon (kshrink_slabd) driven by mm vendor
+	  hooks. Load as a module; spawns its kthread on insmod.

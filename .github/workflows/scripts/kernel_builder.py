@@ -311,6 +311,7 @@ CONFIG_CIFS_XATTR=y
         self._oplus_patch_applied = False
         self._oplus_zstd_applied = False
         self._oplus_pcompact_applied = False
+        self._oplus_mm_applied_symbols: list = []
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
 
@@ -3040,17 +3041,100 @@ CONFIG_CIFS_XATTR=y
 
     OPLUS_MODULES = ("crypto_zstdn_o.ko",)
 
+    # OPlus async-reclaim / memload modules (all =m, all opt-in at insmod).
+    # (subdir under scripts/oplus_mm/, Kconfig symbol, .ko name, hooks).
+    # Hook presence was verified against vanilla android13-5.15 headers;
+    # MAPPED_PROTECT_ALL is deliberately NOT wired (page_mapcount() branch
+    # needs 6.x-era mm - the atomic _mapcount path compiled here is 5.15-safe).
+    OPLUS_MM_MODULES = (
+        ("kshrink_lruvecd", "KSHRINK_LRUVECD", "oplus_bsp_kshrink_lruvecd.ko", [
+            ("include/trace/hooks/vmscan.h",
+             ["android_vh_handle_failed_page_trylock",
+              "android_vh_page_trylock_set",
+              "android_vh_page_trylock_clear",
+              "android_vh_page_trylock_get_result",
+              "android_vh_do_page_trylock"]),
+        ]),
+        ("kshrink_slabd", "KSHRINK_SLABD", "oplus_bsp_kshrink_slabd.ko", [
+            ("include/trace/hooks/vmscan.h",
+             ["android_vh_shrink_slab_bypass"]),
+        ]),
+        ("pcppages_opt", "PCPPAGES_OPT", "oplus_bsp_pcppages_opt.ko", [
+            ("include/trace/hooks/mm.h",
+             ["android_vh_drain_all_pages_bypass"]),
+        ]),
+        ("abort_mm_opt", "ABORT_MM_OPT", "oplus_bsp_abort_mm_opt.ko", [
+            ("include/trace/hooks/mm.h",
+             ["android_vh_madvise_cold_or_pageout_abort",
+              "android_vh_compact_finished"]),
+        ]),
+        ("look_around", "LOOK_AROUND", "oplus_bsp_look_around.ko", [
+            ("include/trace/hooks/vmscan.h",
+             ["android_vh_check_page_look_around_ref"]),
+            ("include/trace/hooks/mm.h",
+             ["android_vh_look_around",
+              "android_vh_look_around_migrate_page",
+              "android_vh_test_clear_look_around_ref"]),
+        ]),
+        ("mapped_protect", "MAPPED_PROTECT", "oplus_bsp_mapped_protect.ko", [
+            ("include/trace/hooks/vmscan.h",
+             ["android_vh_page_referenced_check_bypass"]),
+            ("include/trace/hooks/mm.h",
+             ["android_vh_update_page_mapcount",
+              "android_vh_add_page_to_lrulist",
+              "android_vh_del_page_from_lrulist",
+              "android_vh_page_should_be_protected",
+              "android_vh_mark_page_accessed",
+              "android_vh_do_traversal_lruvec",
+              "android_vh_show_mapcount_pages"]),
+        ]),
+    )
+
+    # WildKernels micro-optimizations pack (generic, unconditional code
+    # changes - no Kconfig involved). 14 vendored verbatim; optimise_memcmp
+    # is adapted to the 5.15 WEAK_PI entry/exit scheme (upstream patch
+    # targets the __pi_memcmp scheme of newer trees). use_unlikely_wrap_
+    # cpufreq is deliberately EXCLUDED: it targets OnePlus-only cpufreq
+    # code (cpumask_min_limit_store) absent from vanilla GKI. All 15 were
+    # dry-run verified against vanilla android13-5.15.216.
+    MICRO_OPTS_PATCHES = (
+        "optimise_memcmp_5.15.patch",
+        "optimized_mem_operations.patch",
+        "mem_opt_prefetch.patch",
+        "reduce_cache_pressure.patch",
+        "clear_page_16bytes_align.patch",
+        "file_struct_8bytes_align.patch",
+        "minimise_wakeup_time.patch",
+        "avoid_extra_s2idle_wake_attempts.patch",
+        "force_tcp_nodelay.patch",
+        "increase_sk_mem_packets.patch",
+        "f2fs_reduce_congestion.patch",
+        "f2fs_enlarge_min_fsync_blocks.patch",
+        "increase_ext4_default_commit_age.patch",
+        "add_timeout_wakelocks_globally.patch",
+        "silence_irq_cpu_logspam.patch",
+    )
+
     def collect_oplus_modules(self) -> list:
-        """Stages the loadable oplus .ko files (currently just zstdn_o -
-        everything else oplus is built-in) next to the other artifacts.
+        """Stages the loadable oplus .ko files (zstdn_o + whichever mm
+        family modules landed) next to the other artifacts.
 
         Same loud-missing pattern as collect_ath9k_modules: a requested
         module that never got built fails here, not as a mysterious
         absent file downstream. No CRC verification: unlike ath9k these
-        link against the core kernel, not a vendor stack, and
-        -fvisibility=hidden keeps their vendored helpers module-local.
+        link against the core kernel, not a vendor stack.
         """
-        if not self.config.use_oplus_zstd or not self._oplus_zstd_applied:
+        wanted = []
+        if self.config.use_oplus_zstd and self._oplus_zstd_applied:
+            wanted.extend(self.OPLUS_MODULES)
+        if self.config.use_oplus_mm:
+            # Only modules that actually landed (a branch missing one
+            # family's hooks still ships the rest instead of failing).
+            landed = set(self._oplus_mm_applied_symbols)
+            for _subdir, symbol, ko, _hooks in self.OPLUS_MM_MODULES:
+                if symbol in landed:
+                    wanted.append(ko)
+        if not wanted:
             return []
         logger.info("=== oplus: collecting modules ===")
         out_dir = self.work_dir / "out"
@@ -3066,7 +3150,7 @@ CONFIG_CIFS_XATTR=y
         dest.mkdir(exist_ok=True)
         artifacts = []
         missing = []
-        for name in self.OPLUS_MODULES:
+        for name in wanted:
             hit = _pick(name)
             if not hit:
                 missing.append(name)
@@ -3079,10 +3163,83 @@ CONFIG_CIFS_XATTR=y
             self._mark("oplus_modules", "failed", f"not built: {', '.join(missing)}")
             raise RuntimeError(
                 f"oplus modules: requested but never built: {', '.join(missing)}. "
-                f"Check whether Kconfig kept CONFIG_CRYPTO_ZSTDN=m in the built .config."
+                f"Check whether Kconfig kept the =m symbols in the built .config."
             )
         self._mark("oplus_modules", "applied", f"{len(artifacts)} module(s) staged")
         return artifacts
+
+    def apply_micro_opts(self):
+        """Applies the WildKernels micro-optimizations pack, patch by patch.
+
+        Each entry of MICRO_OPTS_PATCHES goes through the atomic
+        dry-run-or-skip gate: a patch that doesn't fit this branch is
+        skipped with a warning (never half-applied), so the pack degrades
+        gracefully on branches other than the verified android13-5.15.
+        """
+        if not self.config.use_micro_opts:
+            self._mark("micro_opts", "skipped", "not requested")
+            return
+        logger.info("=== Applying micro-optimizations pack ===")
+        common_dir = self.work_dir / "common"
+        if not common_dir.exists():
+            self._mark("micro_opts", "failed", "common/ missing")
+            return
+        patches_dir = Path(__file__).parent / "patches" / "micro_opts"
+        applied, skipped = [], []
+        for name in self.MICRO_OPTS_PATCHES:
+            ok, detail = self._apply_patch_with_dry_run(patches_dir / name, common_dir)
+            if ok:
+                applied.append(name)
+            else:
+                logger.warning(f"micro_opts: {name} skipped ({detail})")
+                skipped.append(name)
+        detail = f"{len(applied)}/{len(self.MICRO_OPTS_PATCHES)} applied"
+        if skipped:
+            detail += f"; skipped: {', '.join(skipped)}"
+        self._mark("micro_opts", "applied" if applied else "failed", detail)
+
+    def apply_oplus_mm(self):
+        """Vendors the OPlus async-reclaim / memload module family.
+
+        Six hook-only mm modules (see OPLUS_MM_MODULES) from
+        OnePlusOSS sm8550 v_15.0.0 (vendor/oplus/kernel/mm/{async_reclaim_opt,
+        memload_opt}/), vendored under scripts/oplus_mm/<name>/ with
+        project-created Kconfigs (upstream builds them via Bazel). All
+        built as =m, all opt-in at insmod - the Image behaves like stock
+        until a module is loaded. One "oplus_mm" status entry keeps the CI
+        summary tight; the detail lists per-module outcomes.
+        """
+        if not self.config.use_oplus_mm:
+            self._mark("oplus_mm", "skipped", "not requested")
+            return
+        logger.info("=== Adding OPlus mm module family ===")
+        applied, skipped = [], []
+        for subdir, symbol, _ko, hooks in self.OPLUS_MM_MODULES:
+            ok = self._apply_vendored_oplus_module(
+                key=f"oplus_mm_{subdir}",
+                title=f"Adding OPlus {subdir}",
+                enabled=True,
+                src_dirname=f"oplus_mm/{subdir}",
+                sentinel="Kconfig",
+                dst_rel=f"drivers/oplus_mm_{subdir}",
+                kconfig_rel="drivers/Kconfig",
+                kconfig_source=f'source "drivers/oplus_mm_{subdir}/Kconfig"',
+                makefile_rel="drivers/Makefile",
+                make_obj=f"obj-$(CONFIG_{symbol}) += oplus_mm_{subdir}/",
+                hook_checks=hooks,
+                applied_attr=f"_oplus_mm_{subdir}_applied",
+                applied_detail=f"{symbol} vendored (=m, load to activate)")
+            # The helper marks per-module fragment keys; fold them into
+            # the single family entry so PATCH_STATUS.json stays readable.
+            self.patch_status.pop(f"oplus_mm_{subdir}", None)
+            (applied if ok else skipped).append((subdir, symbol))
+        detail = f"{len(applied)}/{len(self.OPLUS_MM_MODULES)} applied"
+        if skipped:
+            detail += f"; skipped: {', '.join(s for s, _ in skipped)}"
+        # configure_kernel() and _expected_config_symbols() only wire up
+        # the modules that actually landed.
+        self._oplus_mm_applied_symbols = [sym for _, sym in applied]
+        self._mark("oplus_mm", "applied" if applied else "failed", detail)
 
     def configure_kernel(self):
         logger.info("=== Configuring kernel ===")
@@ -3234,6 +3391,15 @@ CONFIG_CIFS_XATTR=y
             with open(config_file, "a") as f:
                 f.write("# === OPlus proactive_compact (--oplus-pcompact) ===\n")
                 f.write("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT=y\n")
+
+        if self.config.use_oplus_mm and self._oplus_mm_applied_symbols:
+            # Modules (=m), like upstream's own DDK build and like zstdn_o
+            # above: several spawn kthreads at init, so opt-in at insmod
+            # rather than always-on built-in. Only landed modules wired.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus mm module family (--oplus-mm) ===\n")
+                for symbol in self._oplus_mm_applied_symbols:
+                    f.write(f"CONFIG_{symbol}=m\n")
 
         build_config = self.work_dir / "common/build.config.gki"
         if build_config.exists():
@@ -4138,6 +4304,9 @@ CONFIG_CIFS_XATTR=y
             symbols.append(("CONFIG_CRYPTO_ZSTDN", False))
         if self.config.use_oplus_pcompact and self._oplus_pcompact_applied:
             symbols.append(("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT", False))
+        if self.config.use_oplus_mm:
+            for symbol in self._oplus_mm_applied_symbols:
+                symbols.append((f"CONFIG_{symbol}", False))
         if self.config.use_zram:
             symbols.append(("CONFIG_ZRAM", False))
             symbols.append(("CONFIG_CRYPTO_LZ4KD", False))
@@ -4712,6 +4881,8 @@ CONFIG_CIFS_XATTR=y
             self.apply_oplus_patch()
             self.apply_oplus_zstd()
             self.apply_oplus_pcompact()
+            self.apply_micro_opts()
+            self.apply_oplus_mm()
             # Before configure_kernel(), like every other feature: it
             # edits Kconfig, and the fragment written below depends on
             # that edit having happened.

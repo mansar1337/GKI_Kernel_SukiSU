@@ -1,0 +1,11 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_MAPPED_PROTECT)).
+# Deliberately WITHOUT the upstream CONFIG_MAPPED_PROTECT_ALL variant
+# (page_mapcount()-based branches): the atomic _mapcount path compiled
+# here is guaranteed 5.15-safe.
+config MAPPED_PROTECT
+	tristate "oplus mapped-file reclaim protection"
+	default n
+	help
+	  Protect frequently-mapped file pages from reclaim via mm vendor
+	  hooks. Load as a module.

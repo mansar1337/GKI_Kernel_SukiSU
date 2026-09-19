@@ -1,0 +1,8 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_KSHRINK_LRUVECD)).
+config KSHRINK_LRUVECD
+	tristate "oplus async lruvec reclaim kthread"
+	default n
+	help
+	  Async lruvec reclaim daemon (kshrink_lruvecd) driven by mm
+	  vendor hooks. Load as a module; spawns its kthread on insmod.

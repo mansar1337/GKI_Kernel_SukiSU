@@ -33,6 +33,8 @@ DISPLAY_NAMES = {
     "oplus_patch": "OPlus kprobe framework",
     "oplus_zstd": "OPlus zstd (zstdn_o)",
     "oplus_modules": "OPlus modules staged",
+    "micro_opts": "Micro-opts pack",
+    "oplus_mm": "OPlus mm family",
     "oplus_pcompact": "OPlus proactive_compact",
     "vendor_module_blacklist": "Vendor Module Blacklist",
     "droidspaces": "Droidspaces",

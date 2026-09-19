@@ -1,0 +1,8 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_ABORT_MM_OPT)).
+config ABORT_MM_OPT
+	tristate "oplus abort pointless madvise/compact"
+	default n
+	help
+	  Abort no-op madvise-cold/pageout and compaction runs via mm
+	  vendor hooks. Load as a module.

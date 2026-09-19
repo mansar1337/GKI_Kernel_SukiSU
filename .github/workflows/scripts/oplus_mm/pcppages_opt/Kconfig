@@ -1,0 +1,7 @@
+# Project-created (no upstream Kconfig: on sm8550 this builds via Bazel/Kleaf).
+# Symbol name matches the upstream Makefile (obj-$(CONFIG_PCPPAGES_OPT)).
+config PCPPAGES_OPT
+	tristate "oplus per-cpu pages drain bypass"
+	default n
+	help
+	  Bypass drain_all_pages via mm vendor hook. Load as a module.

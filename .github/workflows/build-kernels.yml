@@ -255,9 +255,10 @@ jobs:
           [ "${{ github.event.inputs.oplus_kswapd }}" = "true" ] && ARGS="$ARGS --oplus-kswapd"
           [ "${{ github.event.inputs.oplus_waker }}" = "true" ] && ARGS="$ARGS --oplus-waker"
           # Always on (no input slots left - workflow_dispatch caps at 25):
-          # kprobe framework, updated zstd, proactive_compact. All
-          # hardware-independent, KMI-safe, idle/off by default at runtime.
-          ARGS="$ARGS --oplus-patch --oplus-zstd --oplus-pcompact"
+          # kprobe framework, updated zstd, proactive_compact, micro-opts,
+          # mm family. All hardware-independent, KMI-safe, idle/off by
+          # default at runtime.
+          ARGS="$ARGS --oplus-patch --oplus-zstd --oplus-pcompact --micro-opts --oplus-mm"
           [ -n "${{ github.event.inputs.blacklist_modules }}" ] && ARGS="$ARGS --blacklist-modules \"${{ github.event.inputs.blacklist_modules }}\""
           [ "${{ github.event.inputs.DROIDSPACES }}" = "true" ] && ARGS="$ARGS --droidspaces"
           [ "${{ github.event.inputs.enable_ksm }}" = "true" ] && ARGS="$ARGS --ksm"
@@ -301,6 +302,7 @@ jobs:
           find /tmp/gki-build -name "*AnyKernel3*.zip" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "*-boot.img" -type f -exec cp {} artifacts/ \;
           find /tmp/gki-build -name "crypto_zstdn_o.ko" -type f -exec cp {} artifacts/ \;
+          find /tmp/gki-build -name "oplus_bsp_*.ko" -type f -exec cp {} artifacts/ \;
           if [ -z "$(ls -A artifacts/)" ]; then
             echo "No build artifacts found"
             echo "artifacts_exist=false" >> $GITHUB_OUTPUT

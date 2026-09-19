@@ -196,6 +196,11 @@ OPLUS_WAKER="1"
 OPLUS_PATCH="1"
 OPLUS_ZSTD="1"
 OPLUS_PCOMPACT="1"
+# MICRO_OPTS: WildKernels micro-optimizations pack (15 tiny generic
+# patches, each applied only if it fits the branch). OPLUS_MM: OPlus mm
+# module family (6 loadable .ko, opt-in at insmod). Set to "" to skip.
+MICRO_OPTS="1"
+OPLUS_MM="1"
 
 # EXTRA_NET: optional networking config set - IPv6 NAT (ip6tables nat
 # table + MASQUERADE), nftables with the sub-options that make it
@@ -456,6 +461,8 @@ for key, entries in data.items():
         [ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
         [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
         [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
+        [ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
+        [ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
         [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
         [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
@@ -548,6 +555,8 @@ EXTRA_ARGS=()
 [ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
 [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
 [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
+[ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
+[ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
 [ -n "$BLACKLIST_MODULES" ] && EXTRA_ARGS+=(--blacklist-modules "$BLACKLIST_MODULES")
 [ -n "$ATH9K" ] && EXTRA_ARGS+=(--ath9k)
