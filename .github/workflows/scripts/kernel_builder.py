@@ -948,10 +948,26 @@ CONFIG_CIFS_XATTR=y
         respin_suffix = f"-{self.config.android_version}"
         if self.detected_respin:
             respin_suffix += f"-{self.detected_respin}"
+        # OPlus builds carry the _@oplusnize marker in the kernel name so an
+        # oplusnize Image is identifiable on-device (uname -r) at a glance
+        # (e.g. 5.15.216-android13_@oplusnize-lts). Placed here, in
+        # .scmversion, because setlocalversion uses the file's content
+        # verbatim as the release suffix on every build path - patching
+        # setlocalversion itself proved fragile (its two `echo "$res"`
+        # lines serve different purposes; the first match is inside
+        # collect_files(), not the final output).
+        if self._any_oplus_enabled() and "@oplusnize" not in respin_suffix:
+            respin_suffix += "_@oplusnize"
         if self.is_lts_build:
             respin_suffix += "-lts"
         (common_dir / ".scmversion").write_text(respin_suffix)
         logger.info(f".scmversion written: {respin_suffix}")
+
+    def _any_oplus_enabled(self) -> bool:
+        """True if any OPlus vendor module is enabled for this build."""
+        return bool(self.config.use_oplus_binder or self.config.use_oplus_kswapd
+                    or self.config.use_oplus_waker or self.config.use_oplus_patch
+                    or self.config.use_oplus_zstd or self.config.use_oplus_pcompact)
 
     def _detect_kernel_respin(self):
         """Determines which respin (e.g. 'r10') the checked-out
@@ -3269,13 +3285,6 @@ CONFIG_CIFS_XATTR=y
         safe_custom_version = ""
         if self.config.custom_version:
             safe_custom_version = self.config.custom_version.rstrip('-')[:MAX_CUSTOM_LEN]
-        # OPlus builds carry the -@oplusnize marker in the kernel name so an
-        # oplusnize Image is identifiable on-device (uname -r) at a glance.
-        # Appended to an explicit --custom-version if one was given, never
-        # duplicated.
-        if (self.config.use_oplus_binder or self.config.use_oplus_kswapd
-                or self.config.use_oplus_waker) and "@oplusnize" not in safe_custom_version:
-            safe_custom_version = (safe_custom_version + "-@oplusnize")[:MAX_CUSTOM_LEN]
 
         setlocalversion = self.work_dir / "common/scripts/setlocalversion"
         if setlocalversion.exists():
