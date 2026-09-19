@@ -1,8 +1,8 @@
-# GKI SukiSU-Ultra + SUSFS Build System — Poco F6 Pro
+# oplusnize — GKI Kernel with OPlus backports
 
-An automated build system for **GKI kernels** with **SukiSU-Ultra** and **SUSFS**, built and daily-driven on the **Poco F6 Pro / Redmi K70 (`vermeer`)**.
+An automated build system for **GKI kernels** with **SukiSU-Ultra**, **SUSFS** and backported **OPlus** features (binder strategy, kswapd_opt, kprobe framework, zstd, memory opts), built and daily-driven on the **Poco F6 Pro / Redmi K70 (`vermeer`)**.
 
-Python-assisted pipeline with automatic GKI respin tracking (including LTS-merge respins, not just date-based ones), exact source pinning, AVB signing, and dependency auto-installation for local builds.
+Python-assisted pipeline with automatic GKI respin tracking (including LTS-merge respins, not just date-based ones), exact source pinning, AVB signing, and dependency auto-installation for local builds. On-device kernel name carries the `_@oplusnize` marker; artifacts carry `-oplusnize` in the filename.
 
 ---
 
@@ -13,7 +13,7 @@ This project is developed, built and tested for **one target: `android13-5.15` o
 | Target | Status |
 |--------|--------|
 | `android13-5.15` on `vermeer` (Poco F6 Pro / K70) | **Built, flashed, tested, daily-driven.** This is the project. |
-| Other `android13-5.15` devices | Should boot (standard GKI), but **untested** — your risk. |
+| Other `android13-5.15` GKI devices | Should boot (standard GKI + HW-independent, KMI-safe additions), but **untested** — your risk, keep a working boot.img backup. |
 | `android12-5.10`, `android14-6.1` | Tracked in the matrix, scripts attempt them, **untested**. |
 | `android15-6.6` and newer | **Known broken** — build fails. Left disabled. |
 

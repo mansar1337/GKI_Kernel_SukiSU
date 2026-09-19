@@ -3794,6 +3794,13 @@ CONFIG_CIFS_XATTR=y
             return "-lto-full"
         return ""
 
+    @property
+    def oplus_suffix(self) -> str:
+        """Marks oplusnize artifacts (boot.img, AnyKernel3) so they can't
+        be confused with a plain GKI build of the same sub_level - same
+        marker as the _@oplusnize in uname -r, dash-style for filenames."""
+        return "-oplusnize" if self._any_oplus_enabled() else ""
+
     def _mem_used_mb(self) -> Optional[float]:
         """Reads /proc/meminfo and returns current used RAM in MB
         (MemTotal - MemAvailable), or None if unreadable (e.g. non-Linux
@@ -4746,7 +4753,7 @@ CONFIG_CIFS_XATTR=y
                     f"publishes is AVB-signed; an unsigned one must not be "
                     f"handed out as if it were."
                 )
-            dest = self.work_dir / f"{self.config.android_version}-{self.config.kernel_version}.{self.config.sub_level}-{self.config.os_patch_level}{self.artifact_suffix}{self.respin_suffix}-{output_file}"
+            dest = self.work_dir / f"{self.config.android_version}-{self.config.kernel_version}.{self.config.sub_level}-{self.config.os_patch_level}{self.artifact_suffix}{self.respin_suffix}{self.oplus_suffix}-{output_file}"
             self._run_cmd(f"cp {output_file} {dest}", check=False)
             if not dest.exists():
                 raise RuntimeError(f"Failed to copy {output_file} to {dest}")
@@ -4767,7 +4774,7 @@ CONFIG_CIFS_XATTR=y
             if not image_path.exists():
                 logger.error(f"{image_file} not found in {self.work_dir} - skipping AnyKernel3 zip")
                 continue
-            zip_name = f"{self.config.android_version}-{self.config.kernel_version}.{self.config.sub_level}-{self.config.os_patch_level}{self.artifact_suffix}-AnyKernel3{self.respin_suffix}{suffix}.zip"
+            zip_name = f"{self.config.android_version}-{self.config.kernel_version}.{self.config.sub_level}-{self.config.os_patch_level}{self.artifact_suffix}-AnyKernel3{self.respin_suffix}{self.oplus_suffix}{suffix}.zip"
             # Written straight into work_dir. This used to be `zip -r
             # ../{zip_name}` from inside the shared AnyKernel3 checkout,
             # which resolves to the WORKSPACE root - one level above

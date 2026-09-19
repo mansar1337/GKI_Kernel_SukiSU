@@ -1,4 +1,4 @@
-name: Build Kernels
+name: oplusnize Build Kernels
 
 permissions:
   contents: write

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="GKI Kernel Build System")
+    parser = argparse.ArgumentParser(description="oplusnize Kernel Build System")
 
     parser.add_argument("--android", "-a", choices=[v.value for v in AndroidVersion])
     parser.add_argument("--kernel", "-k", choices=[v.value for v in KernelVersion])

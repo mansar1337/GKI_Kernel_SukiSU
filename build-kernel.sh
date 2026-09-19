@@ -400,7 +400,7 @@ fi
 #  Build menu
 # ============================================================
 echo "========================================"
-echo "  GKI KernelSU SUSFS - Build Menu"
+echo "  oplusnize - Build Menu"
 echo "========================================"
 echo "1) Default (android13 / 5.15 / 216 / 2026-09)"
 echo "2) Custom (choose your own versions)"

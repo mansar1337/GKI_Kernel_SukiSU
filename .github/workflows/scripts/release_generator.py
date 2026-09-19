@@ -39,7 +39,7 @@ class ReleaseGenerator:
 
     def generate_body(self, lto_mode: str = "thin") -> str:
         lto_feature_line = "- Full LTO" if lto_mode == "full" else "- Thin LTO"
-        return f"""## Features
+        return f"""## Features (oplusnize)
 
 - SUSFS v2.3.0
 - KPM Support (Kernel Patch Module)
@@ -61,6 +61,13 @@ class ReleaseGenerator:
 - Connection Mark (connmark) Support (netfilter)
 - CIFS/SMB Network Filesystem Support
 - Ptrace Leak Fix (kernels < 5.16) ) and Unicode Fix
+- OPlus binder strategy (PRIO_SKIP)
+- OPlus kswapd_opt + waker_identify
+- OPlus kprobe framework (/proc/kprobe_ctl)
+- OPlus zstdn_o (loadable crypto module)
+- OPlus proactive_compact
+- Micro-optimizations pack (15 patches)
+- OPlus mm module family (6 loadable modules)
 {lto_feature_line}
 
 > **How do I check a feature is actually active on my device?**
