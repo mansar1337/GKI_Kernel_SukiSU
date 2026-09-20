@@ -197,6 +197,10 @@ OPLUS_WAKER="1"
 OPLUS_PATCH="1"
 OPLUS_ZSTD="1"
 OPLUS_PCOMPACT="1"
+# OPLUS_UPROBE: OPlus uprobe tracer (kprobe-resolved storage tracing via
+# /proc/oplus_reliable/storage_reliable/). Same HW-independent, KMI-safe
+# vendored-module pattern. Set to "" to build without.
+OPLUS_UPROBE="1"
 # MICRO_OPTS: WildKernels micro-optimizations pack (15 tiny generic
 # patches, each applied only if it fits the branch). OPLUS_MM: OPlus mm
 # module family (6 loadable .ko, opt-in at insmod). Set to "" to skip.
@@ -479,6 +483,7 @@ for key, entries in data.items():
         [ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
         [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
         [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
+        [ -n "$OPLUS_UPROBE" ] && EXTRA_ARGS+=(--oplus-uprobe)
         [ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
         [ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
@@ -573,6 +578,7 @@ EXTRA_ARGS=()
 [ -n "$OPLUS_PATCH" ] && EXTRA_ARGS+=(--oplus-patch)
 [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
 [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
+[ -n "$OPLUS_UPROBE" ] && EXTRA_ARGS+=(--oplus-uprobe)
 [ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
 [ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)

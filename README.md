@@ -219,6 +219,13 @@ su -c "ls /proc/oplus_mem/fragmentation_index"
 ```
 Active if the symbol is `=y` and the proc entry exists.
 
+**OPlus uprobe tracer** *(`--oplus-uprobe`)* — vendored from OnePlus 15 (`vendor/oplus/kernel/.../oplus_uprobe`): kprobe-resolved uprobe API for tracing storage paths, driven through `/proc/oplus_reliable/storage_reliable/` (`oplus_uprobe`, `uprobe_enable` gate). Self-contained, degrades gracefully when symbols are absent. Needs `CONFIG_UPROBES` (pinned explicitly).
+```bash
+su -c "zcat /proc/config.gz | grep -E 'CONFIG_UPROBES=|CONFIG_OPLUS_FEATURE_OPLUS_UPROBE='"
+su -c "ls /proc/oplus_reliable/storage_reliable/"
+```
+Active if both symbols are `=y` and the proc entries exist.
+
 **Micro-optimizations pack** *(`--micro-opts`)* — 15 small generic patches from WildKernels (14 verbatim, `optimise_memcmp` adapted to the 5.15 `WEAK_PI` entry scheme): arm64 mem/string ops, dcache pressure, alarmtimer wakeup time, s2idle attempts, forced `TCP_NODELAY`, socket buffers, f2fs/ext4 tuning, global wakelock timeouts, IRQ/cpuhotplug logspam silence. Each applied only if it fits the branch (check `PATCH_STATUS.json` → `micro_opts` for the per-patch score). No Kconfig, no runtime toggle — the code changes are unconditional by design.
 ```bash
 su -c "uname -r"
@@ -449,6 +456,7 @@ Tracked families: `android12-5.10`, `android13-5.15`, `android14-6.1`, `android1
 | `--oplus-patch` | Enable OPlus kprobe framework (runtime hooks) | False |
 | `--oplus-zstd` | Enable OPlus updated zstd (zstdn_o crypto) | False |
 | `--oplus-pcompact` | Enable OPlus proactive_compact | False |
+| `--oplus-uprobe` | Enable OPlus uprobe tracer | False |
 | `--micro-opts` | Enable WildKernels micro-optimizations pack | False |
 | `--oplus-mm` | Enable OPlus mm module family (6 loadable .ko) | False |
 | `--droidspaces` | Enable Droidspaces (android12/13/14 only) | False |

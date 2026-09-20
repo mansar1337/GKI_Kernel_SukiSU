@@ -66,6 +66,7 @@ class ReleaseGenerator:
 - OPlus kprobe framework (/proc/kprobe_ctl)
 - OPlus zstdn_o (loadable crypto module)
 - OPlus proactive_compact
+- OPlus uprobe tracer
 - Micro-optimizations pack (15 patches)
 - OPlus mm module family (6 loadable modules)
 {lto_feature_line}

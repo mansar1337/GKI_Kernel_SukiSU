@@ -178,6 +178,9 @@ class BuildConfig:
     use_oplus_patch: bool = False
     use_oplus_zstd: bool = False
     use_oplus_pcompact: bool = False
+    # OPlus uprobe tracer - same vendored-module pattern.
+    # Off by default, enable explicitly.
+    use_oplus_uprobe: bool = False
     # WildKernels micro-opts pack + OPlus mm module family - see
     # KernelBuilder.apply_micro_opts()/apply_oplus_mm(). Off by default.
     use_micro_opts: bool = False
@@ -300,6 +303,7 @@ class BuildConfig:
             "use_oplus_patch": self.use_oplus_patch,
             "use_oplus_zstd": self.use_oplus_zstd,
             "use_oplus_pcompact": self.use_oplus_pcompact,
+            "use_oplus_uprobe": self.use_oplus_uprobe,
             "use_micro_opts": self.use_micro_opts,
             "use_oplus_mm": self.use_oplus_mm,
             "allow_bazel": self.allow_bazel,

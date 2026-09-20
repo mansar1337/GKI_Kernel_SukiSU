@@ -318,6 +318,7 @@ CONFIG_CIFS_XATTR=y
         self._oplus_patch_applied = False
         self._oplus_zstd_applied = False
         self._oplus_pcompact_applied = False
+        self._oplus_uprobe_applied = False
         self._oplus_mm_applied_symbols: list = []
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
@@ -979,7 +980,8 @@ CONFIG_CIFS_XATTR=y
         """True if any OPlus vendor module is enabled for this build."""
         return bool(self.config.use_oplus_binder or self.config.use_oplus_kswapd
                     or self.config.use_oplus_waker or self.config.use_oplus_patch
-                    or self.config.use_oplus_zstd or self.config.use_oplus_pcompact)
+                    or self.config.use_oplus_zstd or self.config.use_oplus_pcompact
+                    or self.config.use_oplus_uprobe)
 
     def _detect_kernel_respin(self):
         """Determines which respin (e.g. 'r10') the checked-out
@@ -3179,6 +3181,38 @@ CONFIG_CIFS_XATTR=y
         self._mark("oplus_modules", "applied", f"{len(artifacts)} module(s) staged")
         return artifacts
 
+    def apply_oplus_uprobe(self):
+        """Vendors OPlus's oplus_uprobe tracer into the tree.
+
+        Source: OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8850,
+        branch oneplus/sm8850_b_16.0.0_oneplus_15,
+        vendor/oplus/kernel/storage/storage_feature_in_module/common/oplus_uprobe/
+        (vendored under scripts/oplus_uprobe/; Makefile adapted - GCOV_PROFILE
+        dropped, it needs CONFIG_GCOV_KERNEL which is off here).
+
+        What it does: kprobe-resolved uprobe API for tracing storage paths,
+        driven through /proc/oplus_reliable/storage_reliable/oplus_uprobe
+        (+ uprobe_enable gate). Self-contained: resolves everything via
+        kprobes/kallsyms at init and degrades gracefully (NULL checks) when
+        symbols are absent. Only requirement is CONFIG_UPROBES, enabled
+        explicitly below (not left to GKI defaults).
+
+        KMI-safe by construction: kprobe/uprobe APIs only, no in-tree
+        delta, no struct changes.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_uprobe", title="Adding OPlus oplus_uprobe tracer",
+            enabled=self.config.use_oplus_uprobe,
+            src_dirname="oplus_uprobe", sentinel="oplus_uprobe.c",
+            dst_rel="drivers/oplus_uprobe",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_uprobe/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUS_FEATURE_OPLUS_UPROBE) += oplus_uprobe/",
+            hook_checks=[("kernel/kprobes.c", ["register_kprobe"])],
+            applied_attr="_oplus_uprobe_applied",
+            applied_detail="OPLUS_UPROBE vendored (via /proc/oplus_reliable/storage_reliable/)")
+
     def apply_micro_opts(self):
         """Applies the WildKernels micro-optimizations pack, patch by patch.
 
@@ -3402,6 +3436,15 @@ CONFIG_CIFS_XATTR=y
             with open(config_file, "a") as f:
                 f.write("# === OPlus proactive_compact (--oplus-pcompact) ===\n")
                 f.write("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT=y\n")
+
+        if self.config.use_oplus_uprobe and self._oplus_uprobe_applied:
+            # Built-in (=y), same Image-only rationale. Idle until driven
+            # through /proc/oplus_reliable/storage_reliable/. UPROBES
+            # pinned explicitly rather than left to GKI defaults.
+            with open(config_file, "a") as f:
+                f.write("# === OPlus oplus_uprobe tracer (--oplus-uprobe) ===\n")
+                f.write("CONFIG_UPROBES=y\n")
+                f.write("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE=y\n")
 
         if self.config.use_oplus_mm and self._oplus_mm_applied_symbols:
             # Modules (=m), like upstream's own DDK build and like zstdn_o
@@ -4340,6 +4383,9 @@ CONFIG_CIFS_XATTR=y
             symbols.append(("CONFIG_CRYPTO_ZSTDN", False))
         if self.config.use_oplus_pcompact and self._oplus_pcompact_applied:
             symbols.append(("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT", False))
+        if self.config.use_oplus_uprobe and self._oplus_uprobe_applied:
+            symbols.append(("CONFIG_UPROBES", False))
+            symbols.append(("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE", False))
         if self.config.use_oplus_mm:
             for symbol in self._oplus_mm_applied_symbols:
                 symbols.append((f"CONFIG_{symbol}", False))
@@ -4917,6 +4963,7 @@ CONFIG_CIFS_XATTR=y
             self.apply_oplus_patch()
             self.apply_oplus_zstd()
             self.apply_oplus_pcompact()
+            self.apply_oplus_uprobe()
             self.apply_micro_opts()
             self.apply_oplus_mm()
             # Before configure_kernel(), like every other feature: it

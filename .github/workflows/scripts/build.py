@@ -100,6 +100,11 @@ def parse_args() -> argparse.Namespace:
                         help="Enable OPlus proactive_compact - procfs-driven "
                              "memory compaction via "
                              "/proc/oplus_mem/fragmentation_index.")
+    parser.add_argument("--oplus-uprobe", action="store_true",
+                        help="Enable the OPlus oplus_uprobe tracer - "
+                             "kprobe-resolved uprobe API for storage paths, "
+                             "driven via /proc/oplus_reliable/storage_reliable/. "
+                             "Hardware-independent, KMI-safe.")
     parser.add_argument("--micro-opts", action="store_true",
                         help="Enable the WildKernels micro-optimizations pack "
                              "(15 small generic patches: arm64 mem/string ops, "
@@ -210,6 +215,7 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_oplus_patch=args.oplus_patch,
         use_oplus_zstd=args.oplus_zstd,
         use_oplus_pcompact=args.oplus_pcompact,
+        use_oplus_uprobe=args.oplus_uprobe,
         use_micro_opts=args.micro_opts,
         use_oplus_mm=args.oplus_mm,
         allow_bazel=args.allow_bazel,
