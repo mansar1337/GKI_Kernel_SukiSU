@@ -67,7 +67,7 @@ class ReleaseGenerator:
 - OPlus zstdn_o (loadable crypto module)
 - OPlus proactive_compact
 - OPlus uprobe tracer
-- Micro-optimizations pack (15 patches)
+- Micro-optimizations pack (22 patches)
 - OPlus mm module family (6 loadable modules)
 {lto_feature_line}
 

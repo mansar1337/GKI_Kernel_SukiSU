@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
                              "Hardware-independent, KMI-safe.")
     parser.add_argument("--micro-opts", action="store_true",
                         help="Enable the WildKernels micro-optimizations pack "
-                             "(15 small generic patches: arm64 mem/string ops, "
+                             "(22 small generic patches: arm64 mem/string ops, "
                              "dcache, alarmtimer, s2idle, tcp, f2fs/ext4, "
                              "wakelocks, logspam). Each patch is applied only "
                              "if it fits this branch.")
@@ -302,7 +302,7 @@ def _features_from_config(config: BuildConfig) -> list:
     if config.use_oplus_mm:
         feats.append("mm family (6)")
     if config.use_micro_opts:
-        feats.append("micro-opts (15)")
+        feats.append("micro-opts (22)")
     return feats
 
 

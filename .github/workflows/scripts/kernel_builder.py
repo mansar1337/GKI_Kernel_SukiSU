@@ -3105,12 +3105,13 @@ CONFIG_CIFS_XATTR=y
     )
 
     # WildKernels micro-optimizations pack (generic, unconditional code
-    # changes - no Kconfig involved). 14 vendored verbatim; optimise_memcmp
-    # is adapted to the 5.15 WEAK_PI entry/exit scheme (upstream patch
-    # targets the __pi_memcmp scheme of newer trees). use_unlikely_wrap_
-    # cpufreq is deliberately EXCLUDED: it targets OnePlus-only cpufreq
-    # code (cpumask_min_limit_store) absent from vanilla GKI. All 15 were
-    # dry-run verified against vanilla android13-5.15.216.
+    # changes - no Kconfig involved). All vendored verbatim except
+    # optimise_memcmp_5.15 (adapted to the 5.15 WEAK_PI entry/exit scheme;
+    # upstream targets the __pi_memcmp scheme of newer trees).
+    # use_unlikely_wrap_cpufreq is deliberately EXCLUDED: it targets
+    # OnePlus-only cpufreq code (cpumask_min_limit_store) absent from
+    # vanilla GKI. All 22 were dry-run verified against vanilla
+    # android13-5.15.216.
     MICRO_OPTS_PATCHES = (
         "optimise_memcmp_5.15.patch",
         "optimized_mem_operations.patch",
@@ -3127,6 +3128,13 @@ CONFIG_CIFS_XATTR=y
         "increase_ext4_default_commit_age.patch",
         "add_timeout_wakelocks_globally.patch",
         "silence_irq_cpu_logspam.patch",
+        "int_sqrt.patch",
+        "disable_cache_hot_buddy.patch",
+        "reduce_pci_pme_wakeups.patch",
+        "silence_system_logspam.patch",
+        "adjust_cpu_scan_order.patch",
+        "reduce_gc_thread_sleep_time.patch",
+        "add_limitation_scaling_min_freq.patch",
     )
 
     def collect_oplus_modules(self) -> list:
