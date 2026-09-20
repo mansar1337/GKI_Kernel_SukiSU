@@ -247,6 +247,12 @@ su -c "lsmod | grep oplus_bsp"
 ```
 Active if the six `oplus_bsp_*` modules are listed (persist via a boot script / root module like any other `.ko`).
 
+**oplusnize modules zip** — flashable root-module zip (`*-oplusnize-modules.zip`, attached to releases next to the boot image): installs `crypto_zstdn_o.ko` + the six `oplus_bsp_*.ko` and loads them at every boot via `service.sh`, so no manual `insmod` is ever needed. Verify with `lsmod` after flashing + reboot.
+```bash
+su -c "lsmod | grep -E 'zstdn_o|oplus_bsp'"
+```
+Active if all seven modules are listed. Uninstalling the module (or rebooting without it) restores the module-free state.
+
 ### Containers & compatibility
 
 **Droidspaces** — real Linux namespace isolation (PID/IPC/Mount/User) at the kernel level: run a full Linux distro in a genuine container with its own init system (systemd, OpenRC), not just a chroot. Managed via the [Droidspaces app](https://github.com/ravindu644/Droidspaces-OSS). See [Droidspaces details](#droidspaces-details) below.

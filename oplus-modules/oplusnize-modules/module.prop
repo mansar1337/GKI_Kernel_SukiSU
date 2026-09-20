@@ -1,0 +1,6 @@
+id=oplusnize_modules
+name=oplusnize modules
+version=v1.0
+versionCode=1
+author=oplusnize
+description=Autoloads the oplusnize loadable kernel modules at boot (zstdn_o + mm family). Requires an oplusnize kernel; does nothing elsewhere.

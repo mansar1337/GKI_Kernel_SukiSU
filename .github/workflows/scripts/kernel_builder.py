@@ -3345,6 +3345,61 @@ CONFIG_CIFS_XATTR=y
         self._oplus_mm_applied_symbols = [sym for _, sym in applied]
         self._mark("oplus_mm", "applied" if applied else "failed", detail)
 
+    def _oplus_modules_template_dir(self) -> Path:
+        # scripts/ -> workflows/ -> .github/ -> repo root
+        return Path(__file__).parent.parent.parent.parent / "oplus-modules" / "oplusnize-modules"
+
+    def create_oplus_modules_zip(self) -> list:
+        """Assembles the flashable oplusnize-modules.zip: the module
+        template (module.prop, service.sh autoloading every staged .ko
+        at boot) plus whatever .ko files collect_oplus_modules() staged.
+
+        Skipped quietly when nothing was wired (all module flags off).
+        A wired-but-missing .ko already failed loudly in
+        collect_oplus_modules(), so anything staged here is complete.
+        """
+        staged = self.work_dir / "oplus-modules"
+        kos = sorted(staged.glob("*.ko")) if staged.exists() else []
+        if not kos:
+            return []
+        template = self._oplus_modules_template_dir()
+        if not (template / "module.prop").exists():
+            raise RuntimeError(
+                f"oplus modules template missing at {template} - refusing to "
+                f"ship a zip without its install scripts."
+            )
+        zip_name = (f"{self.config.android_version}-{self.config.kernel_version}."
+                    f"{self.config.sub_level}-{self.config.os_patch_level}"
+                    f"{self.artifact_suffix}{self.respin_suffix}{self.oplus_suffix}"
+                    f"-modules.zip")
+        zip_dest = self.work_dir / zip_name
+        import tempfile as _tempfile
+        import shutil as _shutil
+        build_tmp = Path(_tempfile.mkdtemp(prefix="oplus-modules-"))
+        try:
+            _shutil.copytree(template, build_tmp / "staging",
+                             dirs_exist_ok=True)
+            mods = build_tmp / "staging" / "modules"
+            mods.mkdir(exist_ok=True)
+            for ko in kos:
+                _shutil.copy2(ko, mods / ko.name)
+                logger.info(f"  {ko.name} packed")
+            # CRLF in shell scripts breaks /system/bin/sh with a cryptic
+            # error - normalize line endings, then pack.
+            self._run_cmd(f"find {build_tmp}/staging -name '*.sh' -exec sed -i 's/\\r$//' {{}} +",
+                          check=False)
+            if zip_dest.exists():
+                zip_dest.unlink()
+            self._run_cmd(f"rm -f {zip_dest} && (cd {build_tmp}/staging && zip -qr {zip_dest} .)",
+                          check=False)
+            if not zip_dest.exists():
+                raise RuntimeError(
+                    f"oplus modules zip was not created at {zip_dest}")
+            logger.info(f"oplus modules zip ready: {zip_dest}")
+            return [str(zip_dest)]
+        finally:
+            _shutil.rmtree(build_tmp, ignore_errors=True)
+
     def configure_kernel(self):
         logger.info("=== Configuring kernel ===")
         self._chdir(self.work_dir)
@@ -5056,6 +5111,7 @@ CONFIG_CIFS_XATTR=y
             self._verify_image_ikconfig()
             ath9k_artifacts = self.collect_ath9k_modules()
             oplus_artifacts = self.collect_oplus_modules()
+            oplus_zip_artifacts = self.create_oplus_modules_zip()
 
             # Rewritten now that the build is done: the earlier call
             # happens before compilation (so a hard patch failure still
@@ -5069,6 +5125,7 @@ CONFIG_CIFS_XATTR=y
             artifacts = []
             artifacts.extend(ath9k_artifacts)
             artifacts.extend(oplus_artifacts)
+            artifacts.extend(oplus_zip_artifacts)
             artifacts.extend(self.prepare_boot_images())
             artifacts.extend(self.create_anykernel_zips())
 

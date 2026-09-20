@@ -70,6 +70,7 @@ class ReleaseGenerator:
 - oplusnize bridge (/proc/oplusnize, rootless checks)
 - Micro-optimizations pack (21 patches)
 - OPlus mm module family (6 loadable modules)
+- oplusnize-modules.zip (autoloads the .ko files at boot - flash in root manager)
 {lto_feature_line}
 
 > **How do I check a feature is actually active on my device?**
