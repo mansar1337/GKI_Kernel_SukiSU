@@ -319,6 +319,7 @@ CONFIG_CIFS_XATTR=y
         self._oplus_zstd_applied = False
         self._oplus_pcompact_applied = False
         self._oplus_uprobe_applied = False
+        self._oplus_storage_log_applied = False
         self._oplus_mm_applied_symbols: list = []
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
@@ -3200,6 +3201,29 @@ CONFIG_CIFS_XATTR=y
         KMI-safe by construction: kprobe/uprobe APIs only, no in-tree
         delta, no struct changes.
         """
+        # storage_log first: it provides pr_storage(), which oplus_uprobe
+        # calls - link/init order follows the drivers/Makefile append order.
+        if not self._apply_vendored_oplus_module(
+                key="oplus_uprobe_storage_log",
+                title="Adding OPlus storage_log (pr_storage backend)",
+                enabled=self.config.use_oplus_uprobe,
+                src_dirname="oplus_storage_log", sentinel="storage_log.c",
+                dst_rel="drivers/oplus_storage_log",
+                kconfig_rel="drivers/Kconfig",
+                kconfig_source='source "drivers/oplus_storage_log/Kconfig"',
+                makefile_rel="drivers/Makefile",
+                make_obj="obj-$(CONFIG_OPLUS_FEATURE_STORAGE_LOG) += oplus_storage_log/",
+                hook_checks=[],
+                applied_attr="_oplus_storage_log_applied",
+                applied_detail="STORAGE_LOG vendored (pr_storage backend)"):
+            if self.patch_status.get("oplus_uprobe_storage_log", {}).get("status") == "skipped":
+                self.patch_status.pop("oplus_uprobe_storage_log", None)
+                self._mark("oplus_uprobe", "skipped", "not requested")
+                return
+            self.patch_status.pop("oplus_uprobe_storage_log", None)
+            self._mark("oplus_uprobe", "failed", "storage_log dependency failed")
+            return
+        self.patch_status.pop("oplus_uprobe_storage_log", None)
         self._apply_vendored_oplus_module(
             key="oplus_uprobe", title="Adding OPlus oplus_uprobe tracer",
             enabled=self.config.use_oplus_uprobe,
@@ -3441,9 +3465,12 @@ CONFIG_CIFS_XATTR=y
             # Built-in (=y), same Image-only rationale. Idle until driven
             # through /proc/oplus_reliable/storage_reliable/. UPROBES
             # pinned explicitly rather than left to GKI defaults.
+            # STORAGE_LOG first: provides pr_storage() for oplus_uprobe.
             with open(config_file, "a") as f:
                 f.write("# === OPlus oplus_uprobe tracer (--oplus-uprobe) ===\n")
                 f.write("CONFIG_UPROBES=y\n")
+                if self._oplus_storage_log_applied:
+                    f.write("CONFIG_OPLUS_FEATURE_STORAGE_LOG=y\n")
                 f.write("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE=y\n")
 
         if self.config.use_oplus_mm and self._oplus_mm_applied_symbols:
@@ -4385,6 +4412,8 @@ CONFIG_CIFS_XATTR=y
             symbols.append(("CONFIG_OPLUS_FEATURE_PROACTIVE_COMPACT", False))
         if self.config.use_oplus_uprobe and self._oplus_uprobe_applied:
             symbols.append(("CONFIG_UPROBES", False))
+            if self._oplus_storage_log_applied:
+                symbols.append(("CONFIG_OPLUS_FEATURE_STORAGE_LOG", False))
             symbols.append(("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE", False))
         if self.config.use_oplus_mm:
             for symbol in self._oplus_mm_applied_symbols:
