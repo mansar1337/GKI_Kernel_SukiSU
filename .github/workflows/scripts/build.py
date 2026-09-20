@@ -105,6 +105,10 @@ def parse_args() -> argparse.Namespace:
                              "kprobe-resolved uprobe API for storage paths, "
                              "driven via /proc/oplus_reliable/storage_reliable/. "
                              "Hardware-independent, KMI-safe.")
+    parser.add_argument("--oplus-nize", action="store_true",
+                        help="Enable the oplusnize bridge - world-readable "
+                             "/proc/oplusnize/{version,features,modules} so the "
+                             "oplusnize app verifies features without root.")
     parser.add_argument("--micro-opts", action="store_true",
                         help="Enable the WildKernels micro-optimizations pack "
                              "(22 small generic patches: arm64 mem/string ops, "
@@ -216,6 +220,7 @@ def create_build_config(args: argparse.Namespace) -> BuildConfig:
         use_oplus_zstd=args.oplus_zstd,
         use_oplus_pcompact=args.oplus_pcompact,
         use_oplus_uprobe=args.oplus_uprobe,
+        use_oplus_nize=args.oplus_nize,
         use_micro_opts=args.micro_opts,
         use_oplus_mm=args.oplus_mm,
         allow_bazel=args.allow_bazel,

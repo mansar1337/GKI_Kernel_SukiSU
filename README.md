@@ -226,6 +226,14 @@ su -c "ls /proc/oplus_reliable/storage_reliable/"
 ```
 Active if both symbols are `=y` and the proc entries exist.
 
+**oplusnize bridge** *(`--oplus-nize`)* — project-authored kernel-to-app bridge: world-readable `/proc/oplusnize/{version,features,modules}` so the oplusnize app verifies features **without root**. Compiled-in state via `IS_ENABLED()`, loaded-`.ko` state via internal module lookup. No hooks, no exports, no writable nodes, zero idle cost.
+```bash
+cat /proc/oplusnize/version
+cat /proc/oplusnize/features
+cat /proc/oplusnize/modules
+```
+Active if the directory exists (no root needed — that is the point).
+
 **Micro-optimizations pack** *(`--micro-opts`)* — 22 small generic patches from WildKernels (21 verbatim, `optimise_memcmp` adapted to the 5.15 `WEAK_PI` entry scheme): arm64 mem/string ops, dcache pressure, alarmtimer wakeup time, s2idle attempts, forced `TCP_NODELAY`, socket buffers, f2fs/ext4 tuning, global wakelock timeouts, IRQ/cpuhotplug logspam silence, int_sqrt, DynamIQ buddy, PCI PME wakeups, scheduler scan order, f2fs GC sleep, cpufreq min-freq limit. Each applied only if it fits the branch (check `PATCH_STATUS.json` → `micro_opts` for the per-patch score). No Kconfig, no runtime toggle — the code changes are unconditional by design.
 ```bash
 su -c "uname -r"
@@ -457,6 +465,7 @@ Tracked families: `android12-5.10`, `android13-5.15`, `android14-6.1`, `android1
 | `--oplus-zstd` | Enable OPlus updated zstd (zstdn_o crypto) | False |
 | `--oplus-pcompact` | Enable OPlus proactive_compact | False |
 | `--oplus-uprobe` | Enable OPlus uprobe tracer | False |
+| `--oplus-nize` | Enable oplusnize bridge (/proc/oplusnize) | False |
 | `--micro-opts` | Enable WildKernels micro-optimizations pack | False |
 | `--oplus-mm` | Enable OPlus mm module family (6 loadable .ko) | False |
 | `--droidspaces` | Enable Droidspaces (android12/13/14 only) | False |

@@ -320,6 +320,7 @@ CONFIG_CIFS_XATTR=y
         self._oplus_pcompact_applied = False
         self._oplus_uprobe_applied = False
         self._oplus_storage_log_applied = False
+        self._oplus_nize_applied = False
         self._oplus_mm_applied_symbols: list = []
         self._peak_mem_used_mb: Optional[float] = None
         self._setup_env()
@@ -982,7 +983,7 @@ CONFIG_CIFS_XATTR=y
         return bool(self.config.use_oplus_binder or self.config.use_oplus_kswapd
                     or self.config.use_oplus_waker or self.config.use_oplus_patch
                     or self.config.use_oplus_zstd or self.config.use_oplus_pcompact
-                    or self.config.use_oplus_uprobe)
+                    or self.config.use_oplus_uprobe or self.config.use_oplus_nize)
 
     def _detect_kernel_respin(self):
         """Determines which respin (e.g. 'r10') the checked-out
@@ -3245,6 +3246,31 @@ CONFIG_CIFS_XATTR=y
             applied_attr="_oplus_uprobe_applied",
             applied_detail="OPLUS_UPROBE vendored (via /proc/oplus_reliable/storage_reliable/)")
 
+    def apply_oplus_nize(self):
+        """Vendors the oplusnize kernel-to-app bridge into the tree.
+
+        Project-authored (scripts/oplus_nize/): world-readable
+        /proc/oplusnize/{version,features,modules} letting the oplusnize
+        app verify kernel features without root. Compiled-in state via
+        IS_ENABLED(), loaded-.ko state via find_module(). No hooks, no
+        exports, no writable nodes, zero idle cost.
+
+        KMI-safe by construction: stable core APIs only, no in-tree
+        delta.
+        """
+        self._apply_vendored_oplus_module(
+            key="oplus_nize", title="Adding oplusnize bridge (/proc/oplusnize)",
+            enabled=self.config.use_oplus_nize,
+            src_dirname="oplus_nize", sentinel="iface.c",
+            dst_rel="drivers/oplus_nize",
+            kconfig_rel="drivers/Kconfig",
+            kconfig_source='source "drivers/oplus_nize/Kconfig"',
+            makefile_rel="drivers/Makefile",
+            make_obj="obj-$(CONFIG_OPLUSNIZE_IFACE) += oplus_nize/",
+            hook_checks=[],
+            applied_attr="_oplus_nize_applied",
+            applied_detail="OPLUSNIZE_IFACE vendored (/proc/oplusnize, 0444)")
+
     def apply_micro_opts(self):
         """Applies the WildKernels micro-optimizations pack, patch by patch.
 
@@ -3480,6 +3506,12 @@ CONFIG_CIFS_XATTR=y
                 if self._oplus_storage_log_applied:
                     f.write("CONFIG_OPLUS_FEATURE_STORAGE_LOG=y\n")
                 f.write("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE=y\n")
+
+        if self.config.use_oplus_nize and self._oplus_nize_applied:
+            # Built-in (=y), same Image-only rationale. Read-only nodes.
+            with open(config_file, "a") as f:
+                f.write("# === oplusnize bridge (--oplus-nize) ===\n")
+                f.write("CONFIG_OPLUSNIZE_IFACE=y\n")
 
         if self.config.use_oplus_mm and self._oplus_mm_applied_symbols:
             # Modules (=m), like upstream's own DDK build and like zstdn_o
@@ -4423,6 +4455,8 @@ CONFIG_CIFS_XATTR=y
             if self._oplus_storage_log_applied:
                 symbols.append(("CONFIG_OPLUS_FEATURE_STORAGE_LOG", False))
             symbols.append(("CONFIG_OPLUS_FEATURE_OPLUS_UPROBE", False))
+        if self.config.use_oplus_nize and self._oplus_nize_applied:
+            symbols.append(("CONFIG_OPLUSNIZE_IFACE", False))
         if self.config.use_oplus_mm:
             for symbol in self._oplus_mm_applied_symbols:
                 symbols.append((f"CONFIG_{symbol}", False))
@@ -5001,6 +5035,7 @@ CONFIG_CIFS_XATTR=y
             self.apply_oplus_zstd()
             self.apply_oplus_pcompact()
             self.apply_oplus_uprobe()
+            self.apply_oplus_nize()
             self.apply_micro_opts()
             self.apply_oplus_mm()
             # Before configure_kernel(), like every other feature: it

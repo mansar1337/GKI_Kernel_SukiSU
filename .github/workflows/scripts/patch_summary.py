@@ -37,6 +37,7 @@ DISPLAY_NAMES = {
     "oplus_mm": "OPlus mm family",
     "oplus_pcompact": "OPlus proactive_compact",
     "oplus_uprobe": "OPlus uprobe tracer",
+    "oplus_nize": "OPlusnize bridge",
     "vendor_module_blacklist": "Vendor Module Blacklist",
     "droidspaces": "Droidspaces",
     "bbrv3": "BBRv3",

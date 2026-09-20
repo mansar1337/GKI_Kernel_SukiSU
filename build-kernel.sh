@@ -172,7 +172,7 @@ BBR_VERSION="bbr3"
 # better perf/code-size - use for the final release build). Only applies
 # to android12/android13 (legacy build.sh path) - ignored on
 # Bazel branches.
-LTO_MODE="full"
+LTO_MODE="thin"
 # Set to "1" to enable Baseband-guard (blocks unauthorized writes to
 # baseband/modem and other protected partitions at the LSM level).
 BBG="1"
@@ -201,6 +201,10 @@ OPLUS_PCOMPACT="1"
 # /proc/oplus_reliable/storage_reliable/). Same HW-independent, KMI-safe
 # vendored-module pattern. Set to "" to build without.
 OPLUS_UPROBE="1"
+# OPLUS_NIZE: oplusnize kernel-to-app bridge - world-readable
+# /proc/oplusnize/{version,features,modules} for rootless feature checks
+# from the oplusnize app. Set to "" to build without.
+OPLUS_NIZE="1"
 # MICRO_OPTS: WildKernels micro-optimizations pack (15 tiny generic
 # patches, each applied only if it fits the branch). OPLUS_MM: OPlus mm
 # module family (6 loadable .ko, opt-in at insmod). Set to "" to skip.
@@ -484,6 +488,7 @@ for key, entries in data.items():
         [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
         [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
         [ -n "$OPLUS_UPROBE" ] && EXTRA_ARGS+=(--oplus-uprobe)
+        [ -n "$OPLUS_NIZE" ] && EXTRA_ARGS+=(--oplus-nize)
         [ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
         [ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
         [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)
@@ -579,6 +584,7 @@ EXTRA_ARGS=()
 [ -n "$OPLUS_ZSTD" ] && EXTRA_ARGS+=(--oplus-zstd)
 [ -n "$OPLUS_PCOMPACT" ] && EXTRA_ARGS+=(--oplus-pcompact)
 [ -n "$OPLUS_UPROBE" ] && EXTRA_ARGS+=(--oplus-uprobe)
+[ -n "$OPLUS_NIZE" ] && EXTRA_ARGS+=(--oplus-nize)
 [ -n "$MICRO_OPTS" ] && EXTRA_ARGS+=(--micro-opts)
 [ -n "$OPLUS_MM" ] && EXTRA_ARGS+=(--oplus-mm)
 [ -n "$EXTRA_NET" ] && EXTRA_ARGS+=(--extra-net)

@@ -68,9 +68,9 @@ FEATURE_ORDER = [
     "ptrace_leak_fix", "unicode_bypass_fix", "task_mmu_fixes",
     "sukisu_hide_stuff", "ath9k",
     "oplus_binder", "oplus_kswapd", "oplus_waker", "oplus_patch",
-    "oplus_zstd", "oplus_pcompact", "oplus_uprobe", "oplus_mm", "micro_opts",
+    "oplus_zstd", "oplus_pcompact", "oplus_uprobe", "oplus_nize",
+    "oplus_mm", "micro_opts",
 ]
-
 FEATURE_LABELS = {
     "susfs": "SUSFS",
     "baseband_guard": "BBG",
@@ -91,6 +91,7 @@ FEATURE_LABELS = {
     "oplus_zstd": "zstdn_o",
     "oplus_pcompact": "proactive_compact",
     "oplus_uprobe": "uprobe tracer",
+    "oplus_nize": "nize bridge",
     "oplus_mm": "mm family (6)",
     "micro_opts": "micro-opts (22)",
 }

@@ -1,0 +1,8 @@
+# Project-created (companion to iface.c, same directory).
+config OPLUSNIZE_IFACE
+	tristate "oplusnize kernel-to-app bridge (/proc/oplusnize)"
+	default n
+	help
+	  World-readable /proc/oplusnize/{version,features,modules} so the
+	  oplusnize app verifies kernel features without root. Zero idle
+	  cost; no hooks, no exports, no writable nodes.
