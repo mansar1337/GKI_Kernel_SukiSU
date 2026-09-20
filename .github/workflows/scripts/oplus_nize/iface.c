@@ -94,13 +94,12 @@ static int name##_open(struct inode *inode, struct file *file)		\
 {									\
 	return single_open(file, name##_show, NULL);			\
 }									\
-									\
 static const struct proc_ops name##_proc_ops = {			\
 	.proc_open	= name##_open,					\
 	.proc_read	= seq_read,					\
 	.proc_lseek	= seq_lseek,					\
 	.proc_release	= single_release,				\
-}
+};
 
 OPLUSNIZE_PROC_ENTRY(version)
 OPLUSNIZE_PROC_ENTRY(features)
