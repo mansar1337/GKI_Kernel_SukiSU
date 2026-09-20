@@ -234,7 +234,7 @@ cat /proc/oplusnize/modules
 ```
 Active if the directory exists (no root needed — that is the point).
 
-**Micro-optimizations pack** *(`--micro-opts`)* — 22 small generic patches from WildKernels (21 verbatim, `optimise_memcmp` adapted to the 5.15 `WEAK_PI` entry scheme): arm64 mem/string ops, dcache pressure, alarmtimer wakeup time, s2idle attempts, forced `TCP_NODELAY`, socket buffers, f2fs/ext4 tuning, global wakelock timeouts, IRQ/cpuhotplug logspam silence, int_sqrt, DynamIQ buddy, PCI PME wakeups, scheduler scan order, f2fs GC sleep, cpufreq min-freq limit. Each applied only if it fits the branch (check `PATCH_STATUS.json` → `micro_opts` for the per-patch score). No Kconfig, no runtime toggle — the code changes are unconditional by design.
+**Micro-optimizations pack** *(`--micro-opts`)* — 21 small generic patches from WildKernels (20 verbatim, `optimise_memcmp` adapted to the 5.15 `WEAK_PI` entry scheme): arm64 mem/string ops, dcache pressure, alarmtimer wakeup time, s2idle attempts, forced `TCP_NODELAY`, socket buffers, f2fs/ext4 tuning, global wakelock timeouts, IRQ/cpuhotplug logspam silence, int_sqrt, DynamIQ buddy, PCI PME wakeups, scheduler scan order, f2fs GC sleep. Each applied only if it fits the branch (check `PATCH_STATUS.json` → `micro_opts` for the per-patch score). No Kconfig, no runtime toggle — the code changes are unconditional by design.
 ```bash
 su -c "uname -r"
 ```

@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
                              "oplusnize app verifies features without root.")
     parser.add_argument("--micro-opts", action="store_true",
                         help="Enable the WildKernels micro-optimizations pack "
-                             "(22 small generic patches: arm64 mem/string ops, "
+                             "(21 small generic patches: arm64 mem/string ops, "
                              "dcache, alarmtimer, s2idle, tcp, f2fs/ext4, "
                              "wakelocks, logspam). Each patch is applied only "
                              "if it fits this branch.")
@@ -307,7 +307,7 @@ def _features_from_config(config: BuildConfig) -> list:
     if config.use_oplus_mm:
         feats.append("mm family (6)")
     if config.use_micro_opts:
-        feats.append("micro-opts (22)")
+        feats.append("micro-opts (21)")
     return feats
 
 

@@ -68,7 +68,7 @@ class ReleaseGenerator:
 - OPlus proactive_compact
 - OPlus uprobe tracer
 - oplusnize bridge (/proc/oplusnize, rootless checks)
-- Micro-optimizations pack (22 patches)
+- Micro-optimizations pack (21 patches)
 - OPlus mm module family (6 loadable modules)
 {lto_feature_line}
 

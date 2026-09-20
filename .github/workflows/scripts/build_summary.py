@@ -93,7 +93,7 @@ FEATURE_LABELS = {
     "oplus_uprobe": "uprobe tracer",
     "oplus_nize": "nize bridge",
     "oplus_mm": "mm family (6)",
-    "micro_opts": "micro-opts (22)",
+    "micro_opts": "micro-opts (21)",
 }
 
 
