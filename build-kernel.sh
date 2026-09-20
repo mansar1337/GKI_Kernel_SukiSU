@@ -167,12 +167,12 @@ DROIDSPACES="1"
 # Congestion control: "none", "bbr1", or "bbr3" (android12/13/14/15
 # so far - see README's "BBRv3" note).
 BBR_VERSION="bbr3"
-# LTO mode: "thin" (default, faster/lower-RAM, parallel link) or "full"
-# (slower, single-threaded, RAM-heavy link step, marginally better
-# perf/code-size - use for the final release build only). Only applies
+# LTO mode: "thin" (faster/lower-RAM, parallel link) or "full"
+# (default, slower, single-threaded, RAM-heavy link step, marginally
+# better perf/code-size - use for the final release build). Only applies
 # to android12/android13 (legacy build.sh path) - ignored on
 # Bazel branches.
-LTO_MODE="thin"
+LTO_MODE="full"
 # Set to "1" to enable Baseband-guard (blocks unauthorized writes to
 # baseband/modem and other protected partitions at the LSM level).
 BBG="1"
