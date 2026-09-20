@@ -162,6 +162,13 @@ CONFIG_NETFILTER_XT_CONNMARK=y
 # support for Samba/Windows network shares) ===
 CONFIG_CIFS=y
 
+# === LZMA ramdisk decompression (for LZMA-packed initramfs/cpio, e.g.
+# custom port ramdisks - inert until such a ramdisk is actually booted).
+# NOTE: this is RD_LZMA only. CRYPTO_LZMA does not exist on 5.15
+# (no crypto/lzma.c upstream), and LZMA can never be a zram algorithm
+# (kernel LZMA is decode-only) - use lz4kd/lz4k_oplus/zstdn_o there.
+CONFIG_RD_LZMA=y
+
 # === BTF / eBPF / FUSE-BPF (debugging + eBPF tooling, matches
 # WildKernels' "BTF / eBPF / FUSE-BPF" feature) ===
 # CONFIG_DEBUG_INFO_BTF is already on by default in stock gki_defconfig
@@ -4308,6 +4315,7 @@ CONFIG_CIFS_XATTR=y
             ("CONFIG_IP_SET", False),
             ("CONFIG_NET_SCH_CAKE", False),
             ("CONFIG_CIFS", False),
+            ("CONFIG_RD_LZMA", False),
             ("CONFIG_TMPFS_XATTR", False),
             ("CONFIG_DEBUG_INFO_BTF", False),
             ("CONFIG_BPF_EVENTS", False),

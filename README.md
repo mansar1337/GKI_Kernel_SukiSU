@@ -142,6 +142,12 @@ su -c "cat /proc/filesystems | grep cifs"
 ```
 Active if `cifs` is listed.
 
+**LZMA ramdisk decompression** — kernel `RD_LZMA`: boot an LZMA-packed initramfs/cpio (e.g. custom port ramdisks) instead of repacking to gzip/lz4. Inert until such a ramdisk is actually booted; needs a real LZMA ramdisk to verify beyond the config flag.
+```bash
+su -c "zcat /proc/config.gz | grep CONFIG_RD_LZMA"
+```
+Active if it shows `CONFIG_RD_LZMA=y`.
+
 ### Memory & performance
 
 **ZRAM + LZ4KD** — enhanced LZ4 compression for ZRAM (sourced from Huawei's codebase): better ratios at minimal CPU cost, effectively increasing usable RAM. Other switchable algorithms: LZ4K, LZ4HC, deflate, 842, lz4k_oplus.
